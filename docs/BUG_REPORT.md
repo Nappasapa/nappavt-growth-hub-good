@@ -1,9 +1,8 @@
 # NappaVT Growth Hub — Bug Report & Security Audit
 
-Prepared alongside **feature: Google Drive large-clip storage**.
-Every unrelated issue found during the audit is listed here instead of being
-silently changed. "Fixed in this PR" = YES only when the bug was directly
-caused by, or necessary for, the Drive feature.
+Prepared alongside **feature: Google Drive large-clip storage** (PR #1).
+Every issue found during the audits is listed here. "Fixed in this PR" = YES
+only when the fix landed on this PR branch.
 
 ---
 
@@ -14,7 +13,7 @@ caused by, or necessary for, the Drive feature.
 **Area:** Twitch clips / title packaging
 **File/function:** `mergeBotTwitchFields()` (main script, before-write merge)
 **How to reproduce:**
-1. Owner signs in, opens Twitch Clips, picks a Nappa-packaged title variant for a clip (choice saved only on next debounced cloud save).
+1. Owner signs in, opens Twitch Clips, picks a Nappa-packaged title variant for a clip (choice saved on the next debounced cloud save).
 2. Before the debounced save fires, the bot (or another device) changes anything under `state.twitchClips`.
 3. The pending save runs `writeCloudStateNow()` → `mergeBotTwitchFields()` compares `JSON.stringify(remote.twitchClips) !== JSON.stringify(local)` and **replaces the local array wholesale** — the just-made `packageSelectedIndex / packageRejectedTitles / packageVariant` selection is discarded, then persisted.
 **Expected:** locally selected title variants survive a bot/remote metadata update.
@@ -85,6 +84,64 @@ caused by, or necessary for, the Drive feature.
 **Actual/by design:** the bot has no Drive knowledge; for Drive records `videoPath` is empty so it cannot delete the file — it may still set `videoDeleted=true` metadata, which only changes the UI label.
 **Recommended fix:** none required; document that Drive clips are never auto-deleted.
 **Fixed in this PR?** YES (by design — Drive delete is explicit-only; UI copy updated in the "Clip storage" card)
+
+### BUG-008
+**Severity:** HIGH (data safety)
+**Area:** Settings / backups
+**File/function:** `#importBackup` change handler
+**How to reproduce:** Settings → "Import backup" → pick any JSON file (wrong file, old backup, or a random `.json`) → the entire dashboard state is replaced and immediately pushed to the cloud. No confirmation, no validation.
+**Expected:** a deliberate, reversible action.
+**Actual:** silent wholesale replace + cloud overwrite; unrecoverable except from an external backup.
+**Likely cause:** handler imported whatever parsed as JSON with no guard.
+**Recommended fix:** validate the JSON shape, show a summary confirm dialog, and auto-download a safety backup of the current data first.
+**Fixed in this PR?** YES — import now requires Growth-Hub-shaped JSON, shows a backup-vs-current summary confirm, and downloads `NappaVT_GrowthHub_PRE_IMPORT_SAFETY_<date>.json` before replacing anything.
+
+### BUG-009
+**Severity:** MEDIUM (data safety)
+**Area:** Settings / reset
+**File/function:** `#resetAll` click handler → `resetCloudAndLocal()`
+**How to reproduce:** Settings → "Delete all data" → single confirm click deletes all local AND cloud data.
+**Expected:** destructive global reset should require deliberate confirmation.
+**Actual:** one misclick away from total deletion.
+**Likely cause:** single generic `confirm()`.
+**Recommended fix:** typed confirmation.
+**Fixed in this PR?** YES — reset now additionally requires typing `DELETE`.
+
+### BUG-010
+**Severity:** LOW
+**Area:** Multiple buttons
+**File/function:** `createAdvisorInvite()`, `submitAdvisorNote()`, `addStream` handler
+**How to reproduce:** double-click any of these buttons quickly.
+**Expected:** one invite / one note / one stream entry.
+**Actual:** duplicates (no busy guard on the async inserts or the add handler).
+**Likely cause:** no disabled-while-processing guard.
+**Recommended fix:** same pattern as the login form (`disabled` until the async op resolves).
+**Fixed in this PR?** NO (unrelated)
+
+### BUG-011
+**Severity:** LOW
+**Area:** Settings exports
+**File/function:** `csvDownload()`
+**How to reproduce:** put `=HYPERLINK("http://evil","x")` into a stream note → export CSV → open in Excel.
+**Expected:** the text is inert data.
+**Actual:** Excel/Sheets interprets the cell as a formula.
+**Likely cause:** cells not neutralized for leading `= + - @`.
+**Recommended fix:** prefix a `'` before such cells (standard mitigation).
+**Fixed in this PR?** YES — `csvDownload` now neutralizes formula-leading cells.
+
+---
+
+## Follow-up improvements shipped in this PR (quick-wins pack)
+
+- **Cancel upload** button during Drive uploads (aborts cleanly, keeps the resumable session so retry continues from the last confirmed byte; no queue record is created).
+- **Local video preview** of the selected file before uploading (object URL, revoked on change/reset).
+- **Clip-name autofill** from the chosen filename (never overwrites an existing title).
+- **Storage stats line** in the "Clip storage" card (Drive clips/size vs Supabase clips/size + cleanup setting).
+- **Backup import safety** (BUG-008 fix) and **typed Reset confirmation** (BUG-009 fix).
+- **Global `unhandledrejection` handler** → sync pill shows "Background error · will retry" instead of silent console-only failures.
+- **`beforeunload` warning** for unsaved (still-syncing) edits, in addition to the upload warning.
+- **A11y/meta polish:** `aria-label`s on icon-only delete buttons, `aria-live` on upload/storage status, favicon, meta description, preconnect hints to Supabase/Google endpoints.
+- **CSV formula-injection guard** (BUG-011 fix).
 
 ---
 

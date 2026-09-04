@@ -8,6 +8,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Nappa Hub">
+<meta name="description" content="NappaVT Growth Hub — private content dashboard for clip prep, publishing queue, stream analytics and advisor feedback.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0d10'/%3E%3Ctext x='32' y='43' font-family='Arial,Helvetica,sans-serif' font-size='34' font-weight='700' text-anchor='middle' fill='%23d99a5b'%3EN%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://oilpvawpfysthoanjcnh.supabase.co" crossorigin>
+<link rel="preconnect" href="https://www.googleapis.com">
+<link rel="preconnect" href="https://accounts.google.com" crossorigin>
 <title>NappaVT Growth Hub</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- Google Identity Services (token client only, for private Google Drive clip storage) -->
@@ -678,7 +683,11 @@ th{
 .upload-progress-head .up-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .upload-progress-head .up-pct{font-weight:700;color:var(--accent);white-space:nowrap}
 .upload-progress .progress{height:8px;margin:7px 0 5px}
+.upload-progress .upload-progress-foot{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .upload-progress .up-bytes{font-size:11px;color:var(--muted)}
+.upload-progress .up-cancel{font-size:10.5px;padding:3px 10px;min-height:24px}
+.upload-video-preview{display:none;margin-top:8px;max-width:100%;max-height:230px;width:auto;border:1px solid var(--line);border-radius:10px;background:#000}
+.upload-video-preview.show{display:block}
 .import-source{
   display:none;
   margin-top:8px;
@@ -4755,14 +4764,15 @@ html[data-theme="nappa"] #dashboardShell:after{
  </div>
  <input id="qVideo" type="file" accept="video/*,.mp4,.mov,.webm,.mkv">
  <div id="qFileInfo" class="upload-status"></div>
+ <video id="qVideoPreview" class="upload-video-preview" controls playsinline></video>
  <div id="qUploadProgress" class="upload-progress">
  <div class="upload-progress-head"><span class="up-name" id="qUploadName"></span><span class="up-pct" id="qUploadPct">0%</span></div>
  <div class="progress"><div id="qUploadBar" style="width:0%"></div></div>
- <div class="up-bytes" id="qUploadBytes">0 MB / 0 MB</div>
+ <div class="upload-progress-foot"><span class="up-bytes" id="qUploadBytes">0 MB / 0 MB</span><button class="btn secondary up-cancel" id="qUploadCancel" type="button" hidden>Cancel upload</button></div>
  </div>
  <div class="muted" id="qStorageHint">New uploads go to your private Google Drive. It is not public. Existing clips stay in Supabase Storage.</div>
  <div id="qImportedClip" class="import-source"></div>
- <div id="uploadStatus" class="upload-status"></div>
+ <div id="uploadStatus" class="upload-status" aria-live="polite"></div>
  </div>
  </div>
 
@@ -4975,6 +4985,8 @@ html[data-theme="nappa"] #dashboardShell:after{
  </select>
  <div class="muted" style="margin-top:6px">Default: 7 days. Use “Keep this video” on any post you never want auto-deleted.</div>
  </div>
+ </div>
+ <div id="storageStats" class="muted" style="margin-top:10px" aria-live="polite"></div>
  </div>
  </div>
 
@@ -6547,7 +6559,7 @@ function renderClips(){
   if(!rows.length){tb.innerHTML='<tr><td colspan="10" class="empty">No clips in this filter.</td></tr>';return}
   rows.forEach(c=>{
     const tr=document.createElement('tr');
-    tr.innerHTML=`<td><b>${esc(c.title)}</b><div class="muted">${c.length?c.length+' sec':''}</div></td><td>${esc(c.format)}</td><td>${badge(c.status)}</td><td>${c.score}/10</td><td>${esc(c.hook)}</td><td>${esc(c.source)}</td><td>${fmt(c.views)}</td><td>${fmt(c.follows)}</td><td>${esc(c.notes)}</td><td><div class="row"><button class="btn secondary" data-cycle="${c.id}">Status</button><button class="btn danger" data-del-clip="${c.id}">×</button></div></td>`;
+    tr.innerHTML=`<td><b>${esc(c.title)}</b><div class="muted">${c.length?c.length+' sec':''}</div></td><td>${esc(c.format)}</td><td>${badge(c.status)}</td><td>${c.score}/10</td><td>${esc(c.hook)}</td><td>${esc(c.source)}</td><td>${fmt(c.views)}</td><td>${fmt(c.follows)}</td><td>${esc(c.notes)}</td><td><div class="row"><button class="btn secondary" data-cycle="${c.id}">Status</button><button class="btn danger" data-del-clip="${c.id}" aria-label="Delete clip ${esc(c.title)}">×</button></div></td>`;
     tb.appendChild(tr);
   });
   tb.querySelectorAll('[data-del-clip]').forEach(btn=>btn.addEventListener('click',()=>{state.clips=state.clips.filter(x=>x.id!=btn.dataset.delClip);save()}));
@@ -6625,6 +6637,7 @@ let gdriveUploadSeq=0;
 let gdriveActiveXhr=null;
 let gdriveUploadRunning=false;
 let gdriveResumableSession=null;
+let gdriveCancelRequested=false;
 let gdriveConnState='not';
 let gdriveLastProgressPaint=0;
 
@@ -6937,6 +6950,7 @@ async function gdriveRunSession(file,session,{onProgress,onStatusLine,seq}){
   }
 
   while(offset<total){
+    if(gdriveCancelRequested)throw new DriveError('Upload cancelled.','cancelled');
     if(seq!==gdriveUploadSeq)throw new DriveError('This upload was replaced by a newer attempt.','cancelled');
     const currentInputFile=document.getElementById('qVideo')?.files?.[0];
     if(currentInputFile&&currentInputFile!==file){
@@ -7048,6 +7062,7 @@ async function gdriveUploadFile(file,{onProgress,onStatusLine}={}){
     session=null;
   }
   gdriveResumableSession=null;
+  gdriveCancelRequested=false;
   try{
     if(!session){
       onStatusLine&&onStatusLine('Preparing your Google Drive folder…');
@@ -7061,9 +7076,10 @@ async function gdriveUploadFile(file,{onProgress,onStatusLine}={}){
     gdriveResumableSession=null;
     return result;
   }catch(err){
-    // Keep the session so a retry can resume instead of restarting,
-    // unless the session itself is unusable or the user cancelled.
-    if(err&&(err.code==='session_expired'||err.code==='cancelled')){
+    // Keep the session so a retry can resume instead of restarting, even
+    // after a user-cancelled upload. Clear it only when the session itself
+    // is unusable or the selected file changed.
+    if(err&&(err.code==='session_expired'||err.code==='validate')){
       gdriveResumableSession=null;
     }else{
       gdriveResumableSession=session;
@@ -7163,11 +7179,27 @@ function resetUploadProgressBar(){
   document.getElementById('qUploadPct').textContent='0%';
   document.getElementById('qUploadBytes').textContent='0 MB / 0 MB';
   document.getElementById('qUploadName').textContent='';
+  const cancelBtn=document.getElementById('qUploadCancel');
+  if(cancelBtn)cancelBtn.hidden=true;
+}
+
+let qVideoPreviewUrl=null;
+function resetVideoPreview(){
+  const video=document.getElementById('qVideoPreview');
+  if(qVideoPreviewUrl){
+    try{URL.revokeObjectURL(qVideoPreviewUrl)}catch(e){}
+    qVideoPreviewUrl=null;
+  }
+  if(video){
+    try{video.removeAttribute('src');video.load()}catch(e){}
+    video.classList.remove('show');
+  }
 }
 
 function resetLocalFileUploadUI(){
   showSelectedFileInfo(null);
   resetUploadProgressBar();
+  resetVideoPreview();
   updateStorageHint();
 }
 
@@ -7351,12 +7383,26 @@ function showUploadSaveFailure(err){
   el.appendChild(btn);
 }
 
-// Warn before closing/reloading the tab while an upload is running.
+// Warn before closing/reloading the tab while an upload is running, or while
+// edits have not reached the cloud yet.
 window.addEventListener('beforeunload',e=>{
   if(gdriveUploadRunning||gdriveActiveXhr){
     e.preventDefault();
     e.returnValue='A clip upload to Google Drive is still running. Leaving now cancels the upload.';
     return e.returnValue;
+  }
+  if(localDirty&&isOwner()&&!cloudLoadFallback){
+    e.preventDefault();
+    e.returnValue='You have dashboard changes that have not finished syncing yet.';
+    return e.returnValue;
+  }
+});
+
+// Surface silent background failures instead of losing them in the console.
+window.addEventListener('unhandledrejection',e=>{
+  console.error('Background task failed:',e.reason);
+  if(currentUser&&typeof setSyncStatus==='function'){
+    setSyncStatus('error','Background error · will retry');
   }
 });
 
@@ -7405,7 +7451,11 @@ document.getElementById('addQueue').addEventListener('click',async()=>{
   clearUploadStatus();
   addBtn.disabled=true; // also guards double-click / duplicate uploads
   addBtn.textContent=file?'Uploading clip…':'Adding…';
-  if(file)setDriveUploadLock(true);
+  if(file){
+    setDriveUploadLock(true);
+    const cancelBtn=document.getElementById('qUploadCancel');
+    if(cancelBtn)cancelBtn.hidden=false;
+  }
 
   let video=null;
 
@@ -7491,6 +7541,7 @@ document.getElementById('addQueue').addEventListener('click',async()=>{
     // console entry; everything else is logged for diagnosis.
     if(!(err&&err.name==='DriveError'&&err.code==='cancelled'))console.error(err);
     const driveErr=err&&err.name==='DriveError';
+    if(driveErr)resetUploadProgressBar(); // hide the stale progress box on failures/cancel
     showUploadStatus(
       (err.message||'Could not add the post.')+(driveErr?' No queue entry was created — the video was not fully uploaded.':''),
       'error'
@@ -7515,6 +7566,23 @@ document.getElementById('qVideo').addEventListener('change',()=>{
     showSelectedFileInfo(file,problem);
     updateStorageHint();
     resetUploadProgressBar();
+    // Local preview so the right clip is confirmed before any bytes move.
+    resetVideoPreview();
+    if(!problem&&String(file.type||'').toLowerCase().startsWith('video/')){
+      try{
+        qVideoPreviewUrl=URL.createObjectURL(file);
+        const video=document.getElementById('qVideoPreview');
+        if(qVideoPreviewUrl&&video){video.src=qVideoPreviewUrl;video.classList.add('show')}
+      }catch(e){/* preview is optional; some environments block object URLs */}
+    }
+    // Small QoL: prefill the clip name from the filename (never overwrite).
+    if(!problem){
+      const titleInput=document.getElementById('qTitle');
+      if(titleInput&&!titleInput.value.trim()){
+        const friendly=String(file.name).replace(/\.[^.]+$/,'').replace(/[_\-]+/g,' ').replace(/\s+/g,' ').trim();
+        if(friendly)titleInput.value=friendly;
+      }
+    }
     if(problem)showUploadStatus(problem,'error');
     else clearUploadStatus();
   }else{
@@ -7524,6 +7592,13 @@ document.getElementById('qVideo').addEventListener('change',()=>{
 
 document.getElementById('driveConnectBtn').addEventListener('click',()=>{
   connectGoogleDrive();
+});
+
+document.getElementById('qUploadCancel').addEventListener('click',()=>{
+  if(!gdriveUploadRunning)return;
+  gdriveCancelRequested=true;
+  showUploadStatus('Cancelling upload…');
+  if(gdriveActiveXhr){try{gdriveActiveXhr.abort()}catch(e){}}
 });
 
 document.getElementById('requestTwitchRefresh').addEventListener('click',()=>{
@@ -8489,7 +8564,7 @@ function renderQueue(){
         ${hasStoredVideo?`<button class="btn secondary" data-open-video="${q.id}">🎥 Open clip</button>`:''}
         ${q.twitchUrl?`<a class="btn secondary" href="${esc(q.twitchUrl)}" target="_blank" rel="noopener">🎮 Open Twitch</a>`:''}
         ${q.status!=='Posted'?`<button class="btn good" data-post="${q.id}">✅ Mark posted</button>`:''}
-        <button class="btn danger" data-del-q="${q.id}">×</button>
+        <button class="btn danger" data-del-q="${q.id}" aria-label="Delete post ${esc(postTitle)}">×</button>
       </div>`;
 
     root.appendChild(div);
@@ -8538,6 +8613,28 @@ function renderQueue(){
     state.queue=state.queue.filter(x=>x.id!=btn.dataset.delQ);
     save();
   }));
+}
+
+// One-line overview of where clip videos actually live right now.
+function renderStorageStats(){
+  const el=document.getElementById('storageStats');
+  if(!el)return;
+  const queue=Array.isArray(state.queue)?state.queue:[];
+  let driveCount=0,driveBytes=0,supaCount=0,supaBytes=0;
+  queue.forEach(q=>{
+    if(!q||q.videoDeleted)return;
+    if(isDriveRecord(q)&&q.driveFileId){driveCount++;driveBytes+=num(q.videoSize)}
+    else if(!isDriveRecord(q)&&q.videoPath){supaCount++;supaBytes+=num(q.videoSize)}
+  });
+  const cleanupLabel={'0':'immediately after Posted','7':'7 days after Posted','14':'14 days after Posted','30':'30 days after Posted','-1':'never'}[String(state.fields.videoCleanupDays)]||'7 days after Posted';
+  const parts=[];
+  parts.push(driveCount
+    ?`Google Drive: ${driveCount} clip${driveCount===1?'':'s'} · ${formatBytes(driveBytes)||'0 B'} · never auto-deleted`
+    :'Google Drive: no clips yet');
+  parts.push(supaCount
+    ?`Supabase Storage: ${supaCount} clip${supaCount===1?'':'s'} · ${formatBytes(supaBytes)||'0 B'} · auto-cleanup: ${cleanupLabel}`
+    :'Supabase Storage: no clips yet');
+  el.textContent='📊 '+parts.join('  ·  ');
 }
 
 function socialPlatformRecord(q,platform){
@@ -8887,7 +8984,13 @@ function renderAnalytics(){
   chart('viewFormatChart',Object.entries(byFormat).map(([label,value])=>({label,value})));renderInsights();
 }
 function csvDownload(name,rows){
-  const csv=rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  // Quote every cell; neutralize spreadsheet formula characters (=+-@) so a
+  // note like "=HYPERLINK(...)" cannot execute when opened in Excel/Sheets.
+  const csv=rows.map(r=>r.map(v=>{
+    let s=String(v??'');
+    if(/^[=+\-@\t\r]/.test(s))s="'"+s;
+    return '"'+s.replace(/"/g,'""')+'"';
+  }).join(',')).join('\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');
   a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
@@ -8914,7 +9017,29 @@ document.getElementById('exportBackup').addEventListener('click',()=>{
 document.getElementById('importBackup').addEventListener('change',e=>{if(!isOwner()){alert('Advisor access is read-only.');return}
   const file=e.target.files&&e.target.files[0];if(!file)return;const r=new FileReader();
   r.onload=()=>{try{
-    state=normalizeState(JSON.parse(r.result));
+    const parsed=JSON.parse(r.result);
+    if(!parsed||typeof parsed!=='object'||Array.isArray(parsed)||
+       !(['fields','routine','streams','clips','queue','twitchClips'].some(k=>parsed[k]!==undefined))){
+      alert('That file does not look like a NappaVT Growth Hub backup. Nothing was changed.');
+      return;
+    }
+    const count=(v)=>Array.isArray(v)?v.length:0;
+    const ok=confirm(
+      'Replace your current dashboard with this backup?\n\n'+
+      'Backup contains: '+count(parsed.queue)+' queued posts · '+count(parsed.streams)+' streams · '+count(parsed.clips)+' clips\n'+
+      'Your current dashboard: '+(state.queue?.length||0)+' queued posts · '+(state.streams?.length||0)+' streams · '+(state.clips?.length||0)+' clips\n\n'+
+      'A safety backup of your CURRENT data will download first.'
+    );
+    if(!ok){e.target.value='';return}
+    try{
+      const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download='NappaVT_GrowthHub_PRE_IMPORT_SAFETY_'+new Date().toISOString().slice(0,10)+'.json';
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+    }catch(err){/* safety export is best-effort */}
+    state=normalizeState(parsed);
     writeLocalState();
     applyStateToUI();
     scheduleCloudSave(0);
@@ -8923,12 +9048,13 @@ document.getElementById('importBackup').addEventListener('change',e=>{if(!isOwne
   r.readAsText(file);
 });
 document.getElementById('resetAll').addEventListener('click',async()=>{
-  if(confirm('Delete all dashboard data for this signed-in account on this browser AND in the cloud?')){
-    await resetCloudAndLocal();
-  }
+  if(!confirm('Delete all dashboard data for this signed-in account on this browser AND in the cloud?'))return;
+  const typed=(prompt('This permanently deletes EVERYTHING: queue, clips, streams, analytics and settings.\n\nType DELETE to confirm.')||'').trim();
+  if(typed!=='DELETE'){alert('Reset cancelled. Nothing was deleted.');return}
+  await resetCloudAndLocal();
 });
 
-function renderAll(){renderRoutine();renderStreams();renderStreamLibrary();renderClips();renderQueue();renderTwitchClips();renderContentPerformance();renderDashboard();renderAnalytics();renderAdvisorNotes()}
+function renderAll(){renderRoutine();renderStreams();renderStreamLibrary();renderClips();renderQueue();renderTwitchClips();renderContentPerformance();renderDashboard();renderAnalytics();renderAdvisorNotes();renderStorageStats()}
 renderAll();
 })();
 </script>

@@ -20,11 +20,11 @@ async function waitFor(fn, ms = 3000, label = '') {
 const errors = [];
 let errBaseline = 0;
 const vc = new VirtualConsole();
-vc.on('jsdomError', e => { if (!/Could not load link|css/.test(e.message)) errors.push('jsdomError: ' + e.message); });
+vc.on('jsdomError', e => { if (!/Could not load link|css|Not implemented: HTMLMediaElement|Not implemented: navigation/.test(e.message)) errors.push('jsdomError: ' + e.message); });
 vc.on('error', (...a) => errors.push('console.error: ' + a.join(' ').slice(0, 200)));
 
 // ---- transport stubs ----
-const world = {
+const world = { promptValue: '',
   gisRequests: [], gisMode: 'ok', tokenClientCb: null,
   driveSearches: [], foldersByName: {}, existingFolders: [], // name->id; preseed via existingFolders
   sessions: [], chunkPuts: [], probes: [], fileMeta: {}, driveMode: 'ok',
@@ -192,7 +192,11 @@ const dom = new JSDOM(html, {
     // ---- UI stubs ----
     window.confirm = () => world.confirmValue;
     window.alert = m => world.alerts.push(String(m));
+    window.prompt = () => world.promptValue;
     window.open = (u) => { world.openedUrls.push(String(u)); };
+    window.URL.createObjectURL = () => 'blob:stub';
+    window.URL.revokeObjectURL = () => {};
+
   },
 });
 
@@ -337,9 +341,70 @@ async function instance1() {
   t('unsupported file shows error', document.getElementById('uploadStatus').classList.contains('error'));
   t('unsupported message names formats', /MP4, MOV, or WebM/.test(document.getElementById('uploadStatus').textContent));
 
+  console.log('preview & autofill:');
+  document.getElementById('qTitle').value = '';
+  setFile(window, document.getElementById('qVideo'), 'MY_GAME_moments.mp4', 'video/mp4', 4096);
+  t('clip name autofilled from filename', document.getElementById('qTitle').value === 'MY GAME moments', document.getElementById('qTitle').value);
+  t('video preview shown for valid file', document.getElementById('qVideoPreview').classList.contains('show'));
+  document.getElementById('qTitle').value = '';
+
+  console.log('cancel upload:');
+  world.driveMode = 'slow-session';
+  document.getElementById('qTitle').value = 'Cancel case';
+  setFile(window, document.getElementById('qVideo'), 'cancel.mp4', 'video/mp4', 640);
+  document.getElementById('addQueue').click();
+  t('cancel button visible during upload', document.getElementById('qUploadCancel').hidden === false);
+  document.getElementById('qUploadCancel').click();
+  await waitFor(() => document.getElementById('uploadStatus').classList.contains('error') && /cancel/i.test(document.getElementById('uploadStatus').textContent), 6000);
+  t('cancel produces clear message', /cancel/i.test(document.getElementById('uploadStatus').textContent), document.getElementById('uploadStatus').textContent);
+  t('no queue record after cancel', !world.upserts.flatMap(p => (p.state && p.state.queue) || []).some(q => q.title === 'Cancel case'));
+  t('add button usable after cancel', !document.getElementById('addQueue').disabled);
+  t('cancel button hidden after cancel', document.getElementById('qUploadCancel').hidden === true);
+  world.driveMode = 'ok';
+
+  console.log('storage stats:');
+  const stats = document.getElementById('storageStats').textContent;
+  t('stats count drive clips', /Google Drive: \d+ clips?/.test(stats), stats);
+  t('stats note Drive never auto-deleted', /never auto-deleted/.test(stats), stats);
+  t('stats mention Supabase state', /Supabase Storage:/.test(stats), stats);
+
+  console.log('backup import safety:');
+  world.confirmValue = true;
+  // wrong file type of content → rejected without touching state
+  Object.defineProperty(document.getElementById('importBackup'), 'files', {
+    value: [new window.File([JSON.stringify({ hello: 'world', size: 42 })], 'junk.json', { type: 'application/json' })], configurable: true
+  });
+  document.getElementById('importBackup').dispatchEvent(new window.Event('change', { bubbles: true }));
+  await sleep(100);
+  t('non-backup JSON rejected', world.alerts.some(a => /does not look like/.test(a)), world.alerts);
+  world.alerts.length = 0;
+  const backup = JSON.stringify({ fields: { videoCleanupDays: '7' }, routine: {}, streams: [], clips: [], queue: [
+    { id: 999, date: '2026-09-04', time: '10:00', platforms: ['TikTok'], platform: 'TikTok', title: 'Imported post', status: 'Planned',
+      videoPath: '', videoName: '', videoSize: 0, videoType: '', keepVideo: false, videoDeleted: false, videoDeletedAt: '', createdAt: '2026-09-04T09:00:00Z' }
+  ]});
+  Object.defineProperty(document.getElementById('importBackup'), 'files', {
+    value: [new window.File([backup], 'backup.json', { type: 'application/json' })], configurable: true
+  });
+  document.getElementById('importBackup').dispatchEvent(new window.Event('change', { bubbles: true }));
+  await waitFor(() => document.getElementById('queueCards').innerHTML.includes('Imported post'), 4000);
+  t('valid backup imports after confirm', document.getElementById('queueCards').innerHTML.includes('Imported post'));
+  t('import confirmation mentions safety backup', world.alerts.some(a => /Backup imported and queued for cloud sync/.test(a)), world.alerts);
+
+  console.log('reset typed confirmation:');
+  world.promptValue = 'nope';
+  document.getElementById('resetAll').click();
+  await sleep(150);
+  t('wrong typed text cancels reset', world.alerts.some(a => /Reset cancelled/.test(a)), world.alerts);
+  t('data still present after cancelled reset', document.getElementById('queueCards').innerHTML.includes('Imported post'));
+  world.alerts.length = 0;
+  world.promptValue = 'DELETE';
+  document.getElementById('resetAll').click();
+  await waitFor(() => document.getElementById('queueCards').innerHTML.includes('Nothing queued yet'), 4000);
+  t('typed DELETE performs the reset', document.getElementById('queueCards').innerHTML.includes('Nothing queued yet'));
+
   console.log('console hygiene:');
   const newErrors = errors.slice(errBaseline);
-  t('no unexpected errors during instance 1', newErrors.filter(e => !/backend error/.test(e)).length === 0, newErrors.join(' | '));
+  t('no unexpected errors during instance 1', newErrors.filter(e => !/backend error|supabase down/.test(e)).length === 0, newErrors.join(' | '));
   t('access token never appears in console', !errors.some(e => /TESTTOKEN/.test(e)));
 
   console.log(`\n${pass} passed, ${fail} failed (instance 1)`);
@@ -351,6 +416,7 @@ async function instance1() {
 // Drive-backed ones.
 // ============================================================
 async function instance2() {
+  const errBaseline2 = errors.length;
   const dom2 = new JSDOM(html, {
     runScripts: 'dangerously',
     url: 'https://nappavt-growth-hub.pages.dev/',
@@ -458,7 +524,7 @@ async function instance2() {
   const twitchRec = lastUpsert && (lastUpsert.state.queue || []).find(q => q.id === 103);
   t('twitch record still present after deletions', !!twitchRec, lastUpsert && lastUpsert.state.queue && lastUpsert.state.queue.map(q => q.id));
 
-  t('no unexpected errors in instance 2', errors.slice(errBaseline).filter(e => !/backend error/.test(e)).length === 0, errors.join(' | '));
+  t('no unexpected errors in instance 2', errors.slice(errBaseline2).filter(e => !/backend error|supabase down/.test(e)).length === 0, errors.slice(errBaseline2).join(' | '));
   console.log(`\n${pass} passed, ${fail} failed (after instances 1-2)`);
 }
 
