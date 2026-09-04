@@ -1,2 +1,8 @@
 __pycache__/
 .DS_Store
+# YouTube OAuth reconnect fix — never commit runtime credentials.
+backend_reference/.runtime/
+youtube_token.json
+youtube_pending.json
+token.json
+.env
