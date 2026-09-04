@@ -10,6 +10,8 @@
 <meta name="apple-mobile-web-app-title" content="Nappa Hub">
 <title>NappaVT Growth Hub</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Google Identity Services (token client only, for private Google Drive clip storage) -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 
 :root{
@@ -653,6 +655,30 @@ th{
 .upload-status.show{display:block}
 .upload-status.good{color:var(--good);border-color:color-mix(in srgb,var(--good) 35%,var(--line))}
 .upload-status.error{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 35%,var(--line))}
+/* Google Drive clip upload */
+.drive-conn{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-bottom:8px;
+  padding:8px 10px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--panel);
+}
+.drive-conn .drive-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.drive-pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:var(--panel2)}
+.drive-pill.connected{color:var(--good);border-color:color-mix(in srgb,var(--good) 35%,var(--line))}
+.drive-pill.error{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 35%,var(--line))}
+.upload-progress{display:none;margin-top:8px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--panel)}
+.upload-progress.show{display:block}
+.upload-progress-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:11px}
+.upload-progress-head .up-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.upload-progress-head .up-pct{font-weight:700;color:var(--accent);white-space:nowrap}
+.upload-progress .progress{height:8px;margin:7px 0 5px}
+.upload-progress .up-bytes{font-size:11px;color:var(--muted)}
 .import-source{
   display:none;
   margin-top:8px;
@@ -4720,8 +4746,21 @@ html[data-theme="nappa"] #dashboardShell:after{
  <div class="f12">
  <label>Video clip</label>
  <div class="filebox">
+ <div class="drive-conn" id="driveConnRow">
+ <span class="muted" id="driveConnText">New uploads go to your private Google Drive folder “NappaVT Growth Hub Clips”. Existing clips in Supabase Storage keep working.</span>
+ <span class="drive-actions">
+ <span id="driveConnState" class="drive-pill" hidden>Google Drive</span>
+ <button class="btn secondary" id="driveConnectBtn" type="button">Connect Google Drive</button>
+ </span>
+ </div>
  <input id="qVideo" type="file" accept="video/*,.mp4,.mov,.webm,.mkv">
- <div class="muted">The clip uploads to your private Supabase Storage bucket. It is not public.</div>
+ <div id="qFileInfo" class="upload-status"></div>
+ <div id="qUploadProgress" class="upload-progress">
+ <div class="upload-progress-head"><span class="up-name" id="qUploadName"></span><span class="up-pct" id="qUploadPct">0%</span></div>
+ <div class="progress"><div id="qUploadBar" style="width:0%"></div></div>
+ <div class="up-bytes" id="qUploadBytes">0 MB / 0 MB</div>
+ </div>
+ <div class="muted" id="qStorageHint">New uploads go to your private Google Drive. It is not public. Existing clips stay in Supabase Storage.</div>
  <div id="qImportedClip" class="import-source"></div>
  <div id="uploadStatus" class="upload-status"></div>
  </div>
@@ -4921,7 +4960,7 @@ html[data-theme="nappa"] #dashboardShell:after{
  <div class="card span12">
  <h2>Clip storage</h2>
  <div class="note">
-            Manually uploaded video files can be cleaned up automatically after posting. Twitch clips stay on Twitch and use 0 MB of Supabase video storage. Your post history stays in the Growth Hub.
+            New uploads go to your private Google Drive folder “NappaVT Growth Hub Clips” and are only removed when you explicitly delete them — Drive clips are not auto-cleaned. Older uploads remain in Supabase Storage and can still be cleaned up automatically after posting. Twitch clips stay on Twitch and use 0 MB of Supabase video storage. Your post history stays in the Growth Hub.
  </div>
 
  <div class="formgrid" style="margin-top:12px">
@@ -5256,6 +5295,7 @@ let fullRefreshBusy=false;
 let workspaceRealtimeChannel=null;
 let advisorRealtimeChannel=null;
 let advisorNotes=[];
+let lastCloudSaveError=null;
 
 const syncPill=document.getElementById('syncPill');
 const syncText=document.getElementById('syncText');
@@ -5654,10 +5694,10 @@ async function refreshEverything({force=false}={}){
 }
 
 async function writeCloudStateNow(){
-  if(!sb||!currentUser||!workspaceOwnerId||!isOwner())return;
+  if(!sb||!currentUser||!workspaceOwnerId||!isOwner())return {ok:false,error:'not_saving'};
   if(cloudSaveBusy){
     cloudSavePending=true;
-    return;
+    return {ok:false,error:'busy'};
   }
   cloudSaveBusy=true;
   setSyncStatus('syncing','Saving…');
@@ -5683,9 +5723,12 @@ async function writeCloudStateNow(){
     localDirty=false;
     lastRemoteUpdatedAt=payload.updated_at;
     setSyncStatus('synced','Live synced');
+    return {ok:true};
   }catch(err){
     console.error('Cloud save failed:',err);
+    lastCloudSaveError=err;
     setSyncStatus('error','Sync error');
+    return {ok:false,error:err};
   }finally{
     cloudSaveBusy=false;
     if(cloudSavePending){
@@ -6543,45 +6586,779 @@ function clearUploadStatus(){
   el.className='upload-status';
 }
 
-async function uploadQueueVideo(file){
-  if(!file)return {path:'',name:'',size:0,type:''};
-  if(!currentUser||!sb)throw new Error('You must be signed in before uploading a clip.');
+/* ==========================================================
+   GOOGLE DRIVE CLIP STORAGE (6.3.4 + Drive)
+   - Browser-only OAuth via Google Identity Services token client.
+   - Narrow scope: https://www.googleapis.com/auth/drive.file only.
+   - The access token lives in memory only. It is never logged,
+     never stored in Supabase/GitHub/localStorage, and no client
+     secret is used anywhere in this file.
+   - Legacy clips uploaded to Supabase Storage keep working via
+     provider-aware open/delete logic below.
+========================================================== */
+const GDRIVE_CLIENT_ID='493230333651-9v9mkv5s68gj3v7tv7iqiedgrdggkptp.apps.googleusercontent.com';
+const GDRIVE_SCOPES='https://www.googleapis.com/auth/drive.file';
+const GDRIVE_ROOT_FOLDER_NAME='NappaVT Growth Hub Clips';
+// Drive resumable uploads require chunk sizes in multiples of 256 KiB
+// (except the final chunk). 8 MiB = 32 × 256 KiB.
+const DRIVE_CHUNK_SIZE=8*1024*1024;
+const DRIVE_API_BASE='https://www.googleapis.com';
+const DRIVE_ALLOWED_EXTS=['mp4','mov','webm','mkv'];
 
-  const ext=(file.name.split('.').pop()||'mp4').toLowerCase();
-  const base=safeFileName(file.name.replace(/\.[^.]+$/,''));
-  const path=`${currentUser.id}/${Date.now()}_${Math.random().toString(36).slice(2,8)}_${base}.${ext}`;
-
-  showUploadStatus(`Uploading ${file.name}…`);
-
-  const {error}=await sb.storage.from(CLIP_BUCKET).upload(path,file,{
-    cacheControl:'3600',
-    upsert:false,
-    contentType:file.type||undefined
-  });
-  if(error)throw error;
-
-  showUploadStatus(`Uploaded: ${file.name}`,'good');
-  return {path,name:file.name,size:file.size||0,type:file.type||''};
+class DriveError extends Error{
+  constructor(message,code){
+    super(message);
+    this.name='DriveError';
+    this.code=code||'drive_error';
+  }
 }
 
-async function openStoredClip(path){
-  if(!path){alert('No video is attached to this post.');return}
-  if(!sb||!currentUser){alert('Sign in first.');return}
+let gdriveTokenClient=null;
+let gdriveAccessToken='';
+let gdriveTokenExpiresAt=0;
+let gdriveTokenPromise=null;
+let gdrivePendingToken=null;
+let gdriveFolderId='';
+let gdriveMonthFolderId='';
+let gdriveMonthFolderKey='';
+let gdriveUploadSeq=0;
+let gdriveActiveXhr=null;
+let gdriveUploadRunning=false;
+let gdriveResumableSession=null;
+let gdriveConnState='not';
+let gdriveLastProgressPaint=0;
 
-  const {data,error}=await sb.storage.from(CLIP_BUCKET).createSignedUrl(path,600);
-  if(error){
-    console.error(error);
-    alert('Could not open that clip: '+error.message);
+function gdriveSleep(ms){return new Promise(r=>setTimeout(r,ms))}
+function gdriveInvalidateToken(){gdriveAccessToken='';gdriveTokenExpiresAt=0}
+function gdriveFileSignature(file){return [file.name,file.size,file.lastModified].join('|')}
+function gdriveBackoffMs(attempt){
+  const base=Math.min(30000,1000*Math.pow(2,Math.max(1,attempt)-1));
+  return Math.round(base*(0.7+Math.random()*0.6));
+}
+
+function gdriveWaitForGsi(timeoutMs=15000){
+  return new Promise((resolve,reject)=>{
+    if(window.google&&window.google.accounts&&window.google.accounts.oauth2)return resolve();
+    const started=Date.now();
+    const timer=setInterval(()=>{
+      if(window.google&&window.google.accounts&&window.google.accounts.oauth2){
+        clearInterval(timer);
+        resolve();
+      }else if(Date.now()-started>timeoutMs){
+        clearInterval(timer);
+        reject(new DriveError('Google Identity Services did not load. Make sure you are on https://nappavt-growth-hub.pages.dev and that the browser is online.','auth'));
+      }
+    },150);
+  });
+}
+
+// Single in-flight token request at a time. prompt:'' lets Google decide:
+// silent token when a Google session + consent exist, popup otherwise.
+function gdriveRequestToken(timeoutMs=180000){
+  if(gdriveTokenPromise)return gdriveTokenPromise;
+  gdriveTokenPromise=(async()=>{
+    await gdriveWaitForGsi();
+    if(!gdriveTokenClient){
+      gdriveTokenClient=window.google.accounts.oauth2.initTokenClient({
+        client_id:GDRIVE_CLIENT_ID,
+        scope:GDRIVE_SCOPES,
+        callback:resp=>{
+          const pending=gdrivePendingToken;
+          gdrivePendingToken=null;
+          if(pending)clearTimeout(pending.timer);
+          if(!pending)return;
+          if(resp&&resp.access_token){
+            // Never log resp (it contains the access token).
+            gdriveAccessToken=resp.access_token;
+            gdriveTokenExpiresAt=Date.now()+Math.max(120,(Number(resp.expires_in)||3600)-90)*1000;
+            pending.resolve(gdriveAccessToken);
+          }else{
+            pending.reject(new DriveError('Google did not return an access token.','auth'));
+          }
+        },
+        error_callback:err=>{
+          const pending=gdrivePendingToken;
+          gdrivePendingToken=null;
+          if(pending)clearTimeout(pending.timer);
+          if(!pending)return;
+          const type=(err&&err.type)||'';
+          if(type==='popup_closed'||type==='popup_closed_by_user'){
+            pending.reject(new DriveError('Google Drive connection was cancelled before finishing. Connect Google Drive to continue.','cancelled'));
+          }else if(type==='popup_failed_to_open'||type==='iframe_failed'){
+            pending.reject(new DriveError(gdriveConnState==='connected'
+              ?'Google could not renew the Drive connection silently (popup blocked). Click “Connect Google Drive”.'
+              :'The Google sign-in popup could not open. Allow popups for this site and click “Connect Google Drive”.','auth'));
+          }else{
+            pending.reject(new DriveError('Google Drive connection failed'+(type?' ('+type+')':'')+'.','auth'));
+          }
+        }
+      });
+    }
+    return await new Promise((resolve,reject)=>{
+      gdrivePendingToken={resolve,reject,timer:setTimeout(()=>{
+        const pending=gdrivePendingToken;
+        gdrivePendingToken=null;
+        if(pending)pending.reject(new DriveError('Google Drive connection timed out. Try “Connect Google Drive” again.','auth'));
+      },timeoutMs)};
+      try{
+        gdriveTokenClient.requestAccessToken({prompt:''});
+      }catch(e){
+        const pending=gdrivePendingToken;
+        gdrivePendingToken=null;
+        clearTimeout(pending?.timer);
+        pending?.reject(new DriveError('Google Drive connection could not start: '+(e.message||e),'auth'));
+      }
+    });
+  })().finally(()=>{gdriveTokenPromise=null});
+  return gdriveTokenPromise;
+}
+
+async function gdriveEnsureToken({interactive=true}={}){
+  if(gdriveAccessToken&&Date.now()<gdriveTokenExpiresAt)return gdriveAccessToken;
+  try{
+    const token=await gdriveRequestToken(180000);
+    updateDriveConnUI('connected');
+    return token;
+  }catch(err){
+    if(err&&err.name==='DriveError')throw err;
+    throw new DriveError('Google Drive connection failed: '+(err.message||err),'auth');
+  }
+}
+
+// Authenticated Drive JSON API fetch with one silent 401 retry.
+async function gdriveApi(path,opts={}){
+  const send=async token=>fetch(DRIVE_API_BASE+path,{
+    method:opts.method||'GET',
+    headers:Object.assign({Authorization:'Bearer '+token},opts.headers||{}),
+    body:opts.body
+  });
+  let token=await gdriveEnsureToken({interactive:opts.interactive!==false});
+  let res=await send(token);
+  if(res.status===401){
+    gdriveInvalidateToken();
+    try{token=await gdriveEnsureToken({interactive:false})}
+    catch(e){throw new DriveError('Google Drive authorization expired. Click “Connect Google Drive” and try again.','auth')}
+    res=await send(token);
+    if(res.status===401)throw new DriveError('Google Drive authorization expired. Click “Connect Google Drive” and try again.','auth');
+  }
+  return res;
+}
+
+async function gdriveApiError(res,actionLabel){
+  let detail='',reason='';
+  try{
+    const data=await res.json();
+    detail=String((data&&data.error&&data.error.message)||'');
+    const errs=(data&&data.error&&data.error.errors)||[];
+    reason=String((errs[0]&&errs[0].reason)||(data&&data.error&&data.error.status)||'');
+  }catch(e){}
+  const rate=/rate/i.test(reason);
+  const code=res.status===401?'auth'
+    :res.status===403?(rate?'rate_limited':'forbidden')
+    :res.status===404?'not_found'
+    :res.status===410?'gone'
+    :res.status===429?'rate_limited'
+    :res.status>=500?'server':'server';
+  const friendly={
+    auth:'Google Drive authorization expired. Click “Connect Google Drive” and try again.',
+    forbidden:'Google Drive refused the request while '+actionLabel+(reason?' ('+reason+')':'')+'. Reconnect Google Drive and check that the file or folder still exists.',
+    not_found:/open/.test(actionLabel)
+      ?'That video is no longer in Google Drive. It may have been deleted there.'
+      :'Google Drive could not find the required item while '+actionLabel+'. Reconnect Google Drive and try again.',
+    gone:/open/.test(actionLabel)
+      ?'That video is no longer available in Google Drive.'
+      :'Google Drive could not find the required item while '+actionLabel+'.',
+    rate_limited:'Google Drive is rate-limiting requests while '+actionLabel+(reason?' ('+reason+')':'')+'. Wait a moment and try again.',
+    server:'Google Drive had a temporary problem while '+actionLabel+(detail?' — '+detail:'')+'. Try again.'
+  }[code]||('Google Drive request failed while '+actionLabel+' (HTTP '+res.status+').');
+  return new DriveError(friendly,code);
+}
+
+/* ---------- App folder (created once, reused afterwards) ---------- */
+
+async function gdriveFindFolder(name,parentFolderId){
+  const parent=parentFolderId||'root';
+  const q="name = "+JSON.stringify(name)+" and mimeType = 'application/vnd.google-apps.folder' and trashed = false and '"+parent+"' in parents";
+  const params=new URLSearchParams({q,fields:'files(id,name)',spaces:'drive',pageSize:'5'});
+  const res=await gdriveApi('/drive/v3/files?'+params.toString());
+  if(!res.ok)throw await gdriveApiError(res,'looking for the Drive folder');
+  const data=await res.json();
+  return (data.files&&data.files[0]&&data.files[0].id)||'';
+}
+
+async function gdriveCreateFolder(name,parentFolderId){
+  const res=await gdriveApi('/drive/v3/files?fields=id,name',{
+    method:'POST',
+    headers:{'Content-Type':'application/json; charset=UTF-8'},
+    body:JSON.stringify({name,mimeType:'application/vnd.google-apps.folder',parents:[parentFolderId||'root']})
+  });
+  if(!res.ok)throw await gdriveApiError(res,'creating the Drive folder');
+  const data=await res.json();
+  return data.id||'';
+}
+
+async function gdriveEnsureFolders(){
+  if(!gdriveFolderId){
+    gdriveFolderId=await gdriveFindFolder(GDRIVE_ROOT_FOLDER_NAME,'');
+    if(!gdriveFolderId)gdriveFolderId=await gdriveCreateFolder(GDRIVE_ROOT_FOLDER_NAME,'');
+  }
+  const monthKey=new Date().toISOString().slice(0,7); // e.g. 2026-09
+  if(gdriveMonthFolderKey!==monthKey){
+    gdriveMonthFolderId=await gdriveFindFolder(monthKey,gdriveFolderId);
+    if(!gdriveMonthFolderId)gdriveMonthFolderId=await gdriveCreateFolder(monthKey,gdriveFolderId);
+    gdriveMonthFolderKey=monthKey;
+  }
+  if(!gdriveMonthFolderId)throw new DriveError('The Google Drive folder could not be found or created. Reconnect Google Drive and retry.','forbidden');
+  return {rootId:gdriveFolderId,monthId:gdriveMonthFolderId};
+}
+
+/* ---------- Resumable upload ---------- */
+
+async function gdriveStartSession(file,folderId){
+  const mimeType=file.type||'application/octet-stream';
+  const res=await gdriveApi('/upload/drive/v3/files?uploadType=resumable&fields=id,name,mimeType,size,createdTime,parents',{
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json; charset=UTF-8',
+      'X-Upload-Content-Type':mimeType,
+      'X-Upload-Content-Length':String(file.size)
+    },
+    body:JSON.stringify({name:file.name,mimeType,parents:[folderId]})
+  });
+  if(!res.ok)throw await gdriveApiError(res,'starting the upload session');
+  const location=res.headers.get('Location');
+  if(!location)throw new DriveError('Google Drive did not return an upload session URL. Try again.','server');
+  return location;
+}
+
+function gdrivePutChunk(sessionUri,chunkBlob,startOffset,totalSize,token,onChunkProgress){
+  return new Promise((resolve,reject)=>{
+    const xhr=new XMLHttpRequest();
+    gdriveActiveXhr=xhr;
+    xhr.open('PUT',sessionUri,true);
+    xhr.setRequestHeader('Content-Range','bytes '+startOffset+'-'+(startOffset+chunkBlob.size-1)+'/'+totalSize);
+    xhr.setRequestHeader('Authorization','Bearer '+token);
+    xhr.upload.onprogress=e=>{if(onChunkProgress)onChunkProgress(e.loaded||0)};
+    xhr.onload=()=>{
+      if(gdriveActiveXhr===xhr)gdriveActiveXhr=null;
+      const range=xhr.getResponseHeader('Range')||'';
+      const m=/bytes=0-(\d+)/.exec(range);
+      let rateLimit=false,reason='';
+      if(xhr.status===403){
+        try{
+          const data=JSON.parse(xhr.responseText||'{}');
+          reason=String((data.error&&data.error.errors&&data.error.errors[0]&&data.error.errors[0].reason)||'');
+          rateLimit=/rate/i.test(reason)||/userRateLimit|rateLimitExceeded/i.test(xhr.responseText||'');
+        }catch(e){}
+      }
+      resolve({status:xhr.status,confirmed:m?Number(m[1]):null,rateLimit,reason,raw:xhr.responseText||''});
+    };
+    xhr.onerror=()=>{
+      if(gdriveActiveXhr===xhr)gdriveActiveXhr=null;
+      reject(new DriveError('Network error while uploading to Google Drive.','network'));
+    };
+    xhr.onabort=()=>{
+      if(gdriveActiveXhr===xhr)gdriveActiveXhr=null;
+      reject(new DriveError('Upload cancelled.','cancelled'));
+    };
+    try{
+      xhr.send(chunkBlob);
+    }catch(e){
+      if(gdriveActiveXhr===xhr)gdriveActiveXhr=null;
+      reject(new DriveError('Could not read the selected file. It may have moved or changed — select it again.','validate'));
+    }
+  });
+}
+
+// Asks Drive how much of the session it already has.
+// Returns {done:false,offset} or {done:true,file}.
+async function gdriveProbeSession(session,file){
+  let attempts=0;
+  while(true){
+    attempts++;
+    let token='';
+    try{token=await gdriveEnsureToken({interactive:false})}
+    catch(e){token=gdriveAccessToken}
+    let res=null;
+    try{
+      res=await fetch(session.uri,{
+        method:'PUT',
+        headers:{'Authorization':'Bearer '+token,'Content-Range':'bytes */'+file.size}
+      });
+    }catch(netErr){res=null}
+    if(!res){
+      if(attempts>=5)throw new DriveError('Lost connection to Google Drive and could not reach the upload session. Check your internet, then retry — the upload resumes where it stopped.','network');
+      await gdriveSleep(gdriveBackoffMs(attempts));
+      continue;
+    }
+    if(res.status===308){
+      const range=res.headers.get('Range')||'';
+      const m=/bytes=0-(\d+)/.exec(range);
+      return {done:false,offset:m?Number(m[1])+1:0};
+    }
+    if(res.status===200||res.status===201){
+      let json=null;
+      try{json=await res.json()}catch(e){}
+      return {done:true,file:json};
+    }
+    if(res.status===401){
+      gdriveInvalidateToken();
+      if(attempts>=3)throw new DriveError('Google Drive authorization expired mid-upload. Click “Connect Google Drive”, then retry — the upload will resume.','auth');
+      continue;
+    }
+    if(res.status===404||res.status===410){
+      throw new DriveError('The upload session expired on Google Drive. Retry the upload to start again from the beginning — no queue entry was created.','session_expired');
+    }
+    if(res.status===429||res.status>=500){
+      if(attempts>=5)throw new DriveError('Google Drive is temporarily unavailable (HTTP '+res.status+'). Wait a moment and retry — the upload will resume.','server');
+      await gdriveSleep(gdriveBackoffMs(attempts));
+      continue;
+    }
+    throw new DriveError('Google Drive refused the upload session check (HTTP '+res.status+'). No queue entry was created.','server');
+  }
+}
+
+async function gdriveRunSession(file,session,{onProgress,onStatusLine,seq}){
+  const total=file.size;
+  let offset=session.offset||0;
+  let token=await gdriveEnsureToken({interactive:true});
+  let transient=0;
+  const MAX_TRANSIENT=8;
+
+  const finalize=json=>{
+    if(!json||!json.id)throw new DriveError('Google Drive did not confirm the uploaded file. Retry — the upload will verify what Drive received.','server');
+    onProgress&&onProgress(total,total,'done');
+    return json;
+  };
+
+  if(offset>0){
+    onStatusLine&&onStatusLine('Resuming upload from '+formatBytes(offset)+'…');
+    onProgress&&onProgress(offset,total,'uploading');
+  }
+
+  while(offset<total){
+    if(seq!==gdriveUploadSeq)throw new DriveError('This upload was replaced by a newer attempt.','cancelled');
+    const currentInputFile=document.getElementById('qVideo')?.files?.[0];
+    if(currentInputFile&&currentInputFile!==file){
+      throw new DriveError('The selected file changed during the upload. No queue entry was created — select the file again and retry.','cancelled');
+    }
+    if(Date.now()>gdriveTokenExpiresAt){
+      try{token=await gdriveEnsureToken({interactive:false})}
+      catch(e){/* keep current token; a 401 will trigger interactive renew */}
+    }
+    const end=Math.min(offset+DRIVE_CHUNK_SIZE,total)-1;
+    let r=null;
+    try{
+      r=await gdrivePutChunk(session.uri,file.slice(offset,end+1),offset,total,token,loaded=>{
+        onProgress&&onProgress(offset+loaded,total,'uploading');
+      });
+    }catch(err){
+      if(err&&(err.code==='cancelled'||err.code==='validate'))throw err;
+      r=null; // network-level failure → status/Retry-After probe below
+    }
+
+    if(!r||r.status===0||r.status===429||(r.status>=500&&r.status<=599)||(r.status===403&&r.rateLimit)){
+      transient++;
+      if(transient>MAX_TRANSIENT){
+        throw new DriveError('The upload kept failing after '+MAX_TRANSIENT+' retries (last response: '+(r?'HTTP '+r.status:'network error')+'). Nothing was lost — check your connection and retry; it will resume.','network');
+      }
+      const waitMs=gdriveBackoffMs(transient);
+      onStatusLine&&onStatusLine('Connection hiccup · retrying in '+Math.ceil(waitMs/1000)+'s (attempt '+transient+' of '+MAX_TRANSIENT+') — progress kept at '+formatBytes(offset)+'.');
+      onProgress&&onProgress(offset,total,'retrying');
+      await gdriveSleep(waitMs);
+      const p=await gdriveProbeSession(session,file);
+      if(p.done)return finalize(p.file);
+      offset=p.offset;
+      session.offset=offset;
+      if(p.offset>0)transient=Math.min(transient,MAX_TRANSIENT-2);
+      onProgress&&onProgress(offset,total,'uploading');
+      continue;
+    }
+
+    if(r.status===401){
+      onStatusLine&&onStatusLine('Google authorization expired — renewing…');
+      gdriveInvalidateToken();
+      try{
+        token=await gdriveEnsureToken({interactive:true});
+      }catch(e){
+        throw new DriveError('Google Drive needs to be reconnected. Click “Connect Google Drive”, then retry the upload — it will resume from '+formatBytes(offset)+'.','auth');
+      }
+      const p=await gdriveProbeSession(session,file);
+      if(p.done)return finalize(p.file);
+      offset=p.offset;
+      session.offset=offset;
+      continue;
+    }
+
+    if(r.status===403){
+      throw new DriveError('Google Drive refused the upload (403'+(r.reason?' · '+r.reason:'')+'). Reconnect Google Drive and retry. No queue entry was created.','forbidden');
+    }
+
+    if(r.status===404||r.status===410){
+      throw new DriveError('The upload session expired on Google Drive. Retry the upload to start again — no queue entry was created.','session_expired');
+    }
+
+    if(r.status===308){
+      const next=(r.confirmed==null?offset:r.confirmed+1);
+      if(next<=offset){
+        transient++;
+        if(transient>MAX_TRANSIENT)throw new DriveError('Upload stalled: Google Drive is not acknowledging progress. Retry — the upload will resume.','server');
+      }else{
+        transient=0;
+      }
+      offset=Math.max(offset,next>offset?next:offset);
+      session.offset=offset;
+      onProgress&&onProgress(offset,total,'uploading');
+      continue;
+    }
+
+    if(r.status===200||r.status===201){
+      let json=null;
+      try{json=JSON.parse(r.raw||'{}')}catch(e){}
+      session.offset=total;
+      return finalize(json);
+    }
+
+    throw new DriveError('Google Drive rejected an upload chunk (HTTP '+r.status+'). No queue entry was created.','server');
+  }
+
+  // All bytes reported sent but no completion response yet — confirm.
+  // Drive can briefly answer 308 after the final byte; retry a few times
+  // before giving up so a fully-uploaded file is never reported failed.
+  let confirmAttempts=0;
+  while(true){
+    const p=await gdriveProbeSession(session,file);
+    if(p.done)return finalize(p.file);
+    session.offset=p.offset;
+    if(p.offset<total)break; // bytes genuinely missing → resume on retry
+    confirmAttempts++;
+    if(confirmAttempts>=3)break;
+    await gdriveSleep(1000*confirmAttempts);
+  }
+  throw new DriveError('The upload reached Google Drive but could not be confirmed. Retry — it will verify and finish without re-uploading. No queue entry was created.','network');
+}
+
+async function gdriveUploadFile(file,{onProgress,onStatusLine}={}){
+  const seq=++gdriveUploadSeq;
+  const signature=gdriveFileSignature(file);
+  let session=gdriveResumableSession;
+  if(session&&session.signature===signature&&session.uri&&Date.now()-(session.createdAt||0)<5*24*3600*1000){
+    session.offset=session.offset||0;
+  }else{
+    session=null;
+  }
+  gdriveResumableSession=null;
+  try{
+    if(!session){
+      onStatusLine&&onStatusLine('Preparing your Google Drive folder…');
+      onProgress&&onProgress(0,file.size,'preparing');
+      const {monthId}=await gdriveEnsureFolders();
+      onStatusLine&&onStatusLine('Starting resumable upload session…');
+      const uri=await gdriveStartSession(file,monthId);
+      session={uri,signature,createdAt:Date.now(),offset:0};
+    }
+    const result=await gdriveRunSession(file,session,{onProgress,onStatusLine,seq});
+    gdriveResumableSession=null;
+    return result;
+  }catch(err){
+    // Keep the session so a retry can resume instead of restarting,
+    // unless the session itself is unusable or the user cancelled.
+    if(err&&(err.code==='session_expired'||err.code==='cancelled')){
+      gdriveResumableSession=null;
+    }else{
+      gdriveResumableSession=session;
+    }
+    throw err;
+  }
+}
+
+/* ---------- Drive connection UI ---------- */
+
+function updateDriveConnUI(state){
+  gdriveConnState=state;
+  const pill=document.getElementById('driveConnState');
+  const btn=document.getElementById('driveConnectBtn');
+  if(!pill||!btn)return;
+  if(state==='connected'){
+    pill.hidden=false;
+    pill.className='drive-pill connected';
+    pill.textContent='Google Drive · Connected ✓';
+    btn.hidden=true;
+    btn.disabled=false;
+    btn.textContent='Connect Google Drive';
+  }else if(state==='connecting'){
+    pill.hidden=false;
+    pill.className='drive-pill';
+    pill.textContent='Google Drive · Connecting…';
+    btn.hidden=false;
+    btn.disabled=true;
+    btn.textContent='Connecting…';
+  }else{
+    pill.hidden=false;
+    pill.className='drive-pill'+(state==='error'?' error':'');
+    pill.textContent='Google Drive · Not connected';
+    btn.hidden=false;
+    btn.disabled=false;
+    btn.textContent='Connect Google Drive';
+  }
+}
+
+async function connectGoogleDrive(){
+  const btn=document.getElementById('driveConnectBtn');
+  if(btn&&btn.disabled)return;
+  updateDriveConnUI('connecting');
+  try{
+    await gdriveEnsureToken({interactive:true});
+    updateDriveConnUI('connected');
+    showUploadStatus('Google Drive connected. New uploads go to your private “'+GDRIVE_ROOT_FOLDER_NAME+'” folder.','good');
+  }catch(err){
+    updateDriveConnUI('not');
+    showUploadStatus((err&&err.message)||'Could not connect Google Drive.','error');
+  }
+}
+
+/* ---------- File selection / validation / progress UI ---------- */
+
+function validateVideoFile(file){
+  if(!file)return '';
+  const ext=(String(file.name).split('.').pop()||'').toLowerCase();
+  const typeOk=String(file.type||'').toLowerCase().startsWith('video/');
+  if(!DRIVE_ALLOWED_EXTS.includes(ext)&&!typeOk){
+    return '“'+file.name+'” is not a supported video file. Use MP4, MOV, or WebM.';
+  }
+  if(!(file.size>0))return 'That file appears to be empty (0 bytes). Choose a valid video.';
+  return '';
+}
+
+function showSelectedFileInfo(file,problem){
+  const el=document.getElementById('qFileInfo');
+  if(!el)return;
+  if(!file){
+    el.className='upload-status';
+    el.textContent='';
     return;
   }
-  window.open(data.signedUrl,'_blank','noopener');
+  el.className='upload-status show'+(problem?' error':' good');
+  el.textContent='Selected · '+file.name+' · '+formatBytes(file.size)+(file.type?' · '+file.type:'')+(problem?'':' · ready to upload to Google Drive');
 }
 
-async function deleteStoredClip(path){
+function updateStorageHint(){
+  const hint=document.getElementById('qStorageHint');
+  if(!hint)return;
+  const file=document.getElementById('qVideo')?.files?.[0];
+  if(selectedTwitchClip()){
+    hint.textContent='Using a Twitch clip — the video stays on Twitch, nothing is uploaded.';
+  }else if(file){
+    hint.textContent='This clip will upload to your private Google Drive folder “'+GDRIVE_ROOT_FOLDER_NAME+'”. It is not public.';
+  }else{
+    hint.textContent='New uploads go to your private Google Drive. Existing clips stay in Supabase Storage and keep working.';
+  }
+}
+
+function resetUploadProgressBar(){
+  const box=document.getElementById('qUploadProgress');
+  if(!box)return;
+  box.classList.remove('show');
+  document.getElementById('qUploadBar').style.width='0%';
+  document.getElementById('qUploadPct').textContent='0%';
+  document.getElementById('qUploadBytes').textContent='0 MB / 0 MB';
+  document.getElementById('qUploadName').textContent='';
+}
+
+function resetLocalFileUploadUI(){
+  showSelectedFileInfo(null);
+  resetUploadProgressBar();
+  updateStorageHint();
+}
+
+const DRIVE_PHASE_LABELS={
+  preparing:'Preparing…',
+  uploading:'Uploading…',
+  retrying:'Paused · retrying…',
+  done:'Uploaded to Google Drive ✓'
+};
+
+function renderUploadProgress(loaded,total,phase){
+  const box=document.getElementById('qUploadProgress');
+  if(!box)return;
+  const now=Date.now();
+  if(phase==='uploading'&&now-gdriveLastProgressPaint<100)return; // throttle repaints
+  gdriveLastProgressPaint=now;
+  box.classList.add('show');
+  const safeTotal=total>0?total:0;
+  const pct=safeTotal>0?Math.min(100,Math.round((loaded/safeTotal)*1000)/10):0;
+  const shownPct=phase==='done'?100:pct;
+  const file=document.getElementById('qVideo')?.files?.[0];
+  document.getElementById('qUploadName').textContent=file?file.name:'';
+  document.getElementById('qUploadPct').textContent=shownPct+'%';
+  document.getElementById('qUploadBar').style.width=shownPct+'%';
+  document.getElementById('qUploadBytes').textContent=formatBytes(loaded)+' / '+formatBytes(safeTotal)+(DRIVE_PHASE_LABELS[phase]?' · '+DRIVE_PHASE_LABELS[phase]:'');
+}
+
+function setDriveUploadLock(locked){
+  const input=document.getElementById('qVideo');
+  const btn=document.getElementById('driveConnectBtn');
+  if(input)input.disabled=!!locked;
+  if(btn)btn.disabled=!!locked;
+}
+
+/* ---------- Provider-aware clip storage functions ---------- */
+
+function isDriveRecord(q){
+  return !!q&&(q.storageProvider==='google_drive'||(!q.storageProvider&&!!q.driveFileId));
+}
+
+// Uploads the selected local file to the user's private Google Drive.
+// Returns Drive + legacy-compatible fields for the queue record.
+// A queue record is only created by the caller AFTER this resolves.
+async function uploadQueueVideo(file,{onProgress,onStatusLine}={}){
+  if(!file)return null;
+  if(!currentUser||!sb)throw new Error('You must be signed in before uploading a clip.');
+  if(!isOwner())throw new Error('Only the Owner account can upload clip videos.');
+  gdriveUploadRunning=true;
+  try{
+    showUploadStatus('Connecting to Google Drive…');
+    const meta=await gdriveUploadFile(file,{
+      onProgress:(loaded,total,phase)=>{if(onProgress)onProgress(loaded,total,phase)},
+      onStatusLine:msg=>showUploadStatus(msg)
+    });
+    updateDriveConnUI('connected');
+    showUploadStatus('Uploaded to Google Drive ✓','good');
+    return {
+      storageProvider:'google_drive',
+      driveFileId:meta.id,
+      driveFolderId:(meta.parents&&meta.parents[0])||gdriveMonthFolderId||'',
+      videoPath:'', // not used for Drive-backed clips; legacy records keep their Supabase path here
+      name:file.name,
+      size:file.size||0,
+      type:file.type||'',
+      driveUploadedAt:new Date().toISOString()
+    };
+  }finally{
+    gdriveUploadRunning=false;
+  }
+}
+
+// Opens a clip. Accepts either the queue record (provider-aware)
+// or a legacy Supabase storage path string.
+async function openStoredClip(q){
+  if(!q){
+    alert('No video is attached to this post.');
+    return;
+  }
+  if(typeof q==='string'){
+    // Legacy call signature: a Supabase storage path.
+    if(!sb||!currentUser){alert('Sign in first.');return}
+    const {data,error}=await sb.storage.from(CLIP_BUCKET).createSignedUrl(q,600);
+    if(error){
+      console.error(error);
+      alert('Could not open that clip: '+error.message);
+      return;
+    }
+    window.open(data.signedUrl,'_blank','noopener');
+    return;
+  }
+  if(isDriveRecord(q)){
+    if(q.videoDeleted){alert('The video for this post was already removed from Google Drive.');return}
+    if(!q.driveFileId){alert('This post is missing its Google Drive file reference.');return}
+    if(!currentUser){alert('Sign in first.');return}
+    try{
+      // Verify the file still exists with authenticated Drive access
+      // before opening it (no public link sharing is used anywhere).
+      const res=await gdriveApi('/drive/v3/files/'+encodeURIComponent(q.driveFileId)+'?fields=id,name,trashed');
+      if(!res.ok)throw await gdriveApiError(res,'opening the clip');
+      const meta=await res.json();
+      if(meta.trashed){alert('This video is in the Google Drive trash, so it cannot be opened. Restore it in Drive or delete this queue entry.');return}
+      window.open('https://drive.google.com/file/d/'+encodeURIComponent(q.driveFileId)+'/view','_blank','noopener');
+    }catch(err){
+      if(err&&(err.code==='not_found'||err.code==='gone')){
+        alert('This video is no longer in Google Drive. It may have been deleted there. You can remove this queue entry or attach a new video.');
+      }else if(err&&err.code==='auth'){
+        updateDriveConnUI('not');
+        alert('Google Drive needs to be reconnected before this clip can open. Click “Connect Google Drive” in Prepare a post, then try again.');
+      }else{
+        alert('Could not open the Google Drive clip: '+(err.message||err));
+      }
+    }
+    return;
+  }
+  // Legacy Supabase record.
+  if(!q.videoPath){alert('No video is attached to this post.');return}
+  await openStoredClip(q.videoPath);
+}
+
+// Moves a Drive-backed clip to the Google Drive trash (reversible),
+// or removes a legacy clip from Supabase Storage (existing behavior).
+async function deleteStoredClip(q){
+  if(!q)return;
+  if(typeof q==='object'&&isDriveRecord(q)){
+    if(!q.driveFileId)return;
+    const res=await gdriveApi('/drive/v3/files/'+encodeURIComponent(q.driveFileId),{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json; charset=UTF-8'},
+      body:JSON.stringify({trashed:true})
+    });
+    if(!res.ok)throw await gdriveApiError(res,'moving the video to the Drive trash');
+    return;
+  }
+  const path=typeof q==='string'?q:q.videoPath;
   if(!path||!sb||!currentUser)return;
   const {error}=await sb.storage.from(CLIP_BUCKET).remove([path]);
   if(error)console.warn('Could not remove clip from storage:',error.message);
 }
+
+// After a successful Drive upload, make sure the queue record actually
+// reached Supabase before telling the user everything is done.
+let lastQueueSaveError=null;
+async function ensureQueueRecordSaved(){
+  let lastError=null;
+  for(let attempt=0;attempt<3;attempt++){
+    if(attempt)await gdriveSleep(1200*attempt);
+    try{
+      const result=await writeCloudStateNow();
+      if(result&&result.ok)return {ok:true};
+      lastError=(result&&result.error)||lastError;
+    }catch(err){
+      lastError=err;
+    }
+  }
+  return {ok:false,error:lastError};
+}
+
+function showUploadSaveFailure(err){
+  lastQueueSaveError=err;
+  const el=document.getElementById('uploadStatus');
+  if(!el)return;
+  el.className='upload-status show error';
+  el.textContent='';
+  const span=document.createElement('span');
+  span.textContent='Uploaded to Google Drive ✓ — but the queue record could NOT be saved to Supabase ('+((err&&err.message)||err)+'). The clip is safe in Drive; if the save keeps failing, this post will disappear after a reload. ';
+  el.appendChild(span);
+  const btn=document.createElement('button');
+  btn.type='button';
+  btn.className='btn secondary';
+  btn.textContent='Retry saving';
+  btn.addEventListener('click',async()=>{
+    btn.disabled=true;
+    btn.textContent='Retrying…';
+    const result=await ensureQueueRecordSaved();
+    if(result.ok){
+      showUploadStatus('Uploaded to Google Drive ✓ · post added to the queue.','good');
+    }else{
+      showUploadSaveFailure(result.error); // re-renders banner with a fresh retry button
+    }
+  });
+  el.appendChild(btn);
+}
+
+// Warn before closing/reloading the tab while an upload is running.
+window.addEventListener('beforeunload',e=>{
+  if(gdriveUploadRunning||gdriveActiveXhr){
+    e.preventDefault();
+    e.returnValue='A clip upload to Google Drive is still running. Leaving now cancels the upload.';
+    return e.returnValue;
+  }
+});
 
 function formatBytes(bytes){
   const n=Number(bytes)||0;
@@ -6606,15 +7383,37 @@ document.getElementById('addQueue').addEventListener('click',async()=>{
   if(!title){alert('Add a clip name first.');return}
   if(!platforms.length){alert('Choose at least one platform.');return}
 
-  clearUploadStatus();
-  addBtn.disabled=true;
-  addBtn.textContent=file?'Uploading clip…':'Adding…';
+  // Advisor sessions are read-only: an uploaded file would vanish on the
+  // next sync. Block it clearly instead of losing someone's upload.
+  if(file&&!isOwner()){
+    showUploadStatus('Only the Owner account can upload clip videos. Advisors can still add posts without a video.','error');
+    return;
+  }
 
-  let video={path:'',name:'',size:0,type:''};
+  // Validate before anything async so the Google popup (when needed)
+  // still opens inside this click gesture.
+  if(file){
+    const problem=validateVideoFile(file);
+    showSelectedFileInfo(file,problem);
+    if(problem){
+      showUploadStatus(problem,'error');
+      alert(problem);
+      return;
+    }
+  }
+
+  clearUploadStatus();
+  addBtn.disabled=true; // also guards double-click / duplicate uploads
+  addBtn.textContent=file?'Uploading clip…':'Adding…';
+  if(file)setDriveUploadLock(true);
+
+  let video=null;
 
   try{
     if(file){
-      video=await uploadQueueVideo(file);
+      video=await uploadQueueVideo(file,{
+        onProgress:(loaded,total,phase)=>renderUploadProgress(loaded,total,phase)
+      });
     }
 
     state.queue.push({
@@ -6632,10 +7431,14 @@ document.getElementById('addQueue').addEventListener('click',async()=>{
       reminderMinutes:num(document.getElementById('qReminder').value),
       reminderSent:false,
       reminderSentAt:'',
-      videoPath:video.path,
-      videoName:video.name,
-      videoSize:video.size,
-      videoType:video.type,
+      videoPath:video?video.videoPath:'',
+      videoName:video?video.name:'',
+      videoSize:video?video.size:0,
+      videoType:video?video.type:'',
+      storageProvider:video?video.storageProvider:'',
+      driveFileId:video?video.driveFileId:'',
+      driveFolderId:video?video.driveFolderId:'',
+      driveUploadedAt:video?video.driveUploadedAt:'',
       source:twitchSource?'Twitch':(file?'Upload':''),
       twitchClipId:twitchSource?twitchSource.id:'',
       twitchUrl:twitchSource?twitchSource.url:'',
@@ -6662,31 +7465,65 @@ document.getElementById('addQueue').addEventListener('click',async()=>{
     videoInput.value='';
     selectedTwitchClipId='';
     updateImportedClipBox();
+    resetLocalFileUploadUI();
     save();
 
-    showUploadStatus(
-      file
-        ? 'Clip uploaded and post added to the queue.'
-        : twitchSource
+    if(video){
+      // The video is in Drive — now verify the record reached Supabase
+      // before claiming success.
+      const saved=await ensureQueueRecordSaved();
+      if(saved.ok){
+        showUploadStatus('Uploaded to Google Drive ✓ · post added to the queue.','good');
+      }else{
+        showUploadSaveFailure(saved.error);
+        return;
+      }
+    }else{
+      showUploadStatus(
+        twitchSource
           ? 'Twitch clip added. Nappa Bot will create a fresh download link when the reminder is sent.'
           : 'Post added. No video was attached.',
-      'good'
-    );
+        'good'
+      );
+    }
   }catch(err){
-    console.error(err);
-    showUploadStatus(err.message||'Could not add the post.','error');
+    // A user-cancelled Google authorization is not an error worth a scary
+    // console entry; everything else is logged for diagnosis.
+    if(!(err&&err.name==='DriveError'&&err.code==='cancelled'))console.error(err);
+    const driveErr=err&&err.name==='DriveError';
+    showUploadStatus(
+      (err.message||'Could not add the post.')+(driveErr?' No queue entry was created — the video was not fully uploaded.':''),
+      'error'
+    );
     alert('Could not add this post: '+(err.message||err));
+    if(file)addBtn.textContent='Retry upload & add to queue';
   }finally{
     addBtn.disabled=false;
-    addBtn.textContent='Upload & add to queue';
+    if(addBtn.textContent!=='Retry upload & add to queue')addBtn.textContent='Upload & add to queue';
+    setDriveUploadLock(false);
   }
 });
 
 document.getElementById('qVideo').addEventListener('change',()=>{
-  if(document.getElementById('qVideo').files?.length){
+  const input=document.getElementById('qVideo');
+  const file=input.files&&input.files[0];
+  if(file){
     selectedTwitchClipId='';
     updateImportedClipBox();
+    gdriveResumableSession=null; // a different file invalidates any previous resume state
+    const problem=validateVideoFile(file);
+    showSelectedFileInfo(file,problem);
+    updateStorageHint();
+    resetUploadProgressBar();
+    if(problem)showUploadStatus(problem,'error');
+    else clearUploadStatus();
+  }else{
+    resetLocalFileUploadUI();
   }
+});
+
+document.getElementById('driveConnectBtn').addEventListener('click',()=>{
+  connectGoogleDrive();
 });
 
 document.getElementById('requestTwitchRefresh').addEventListener('click',()=>{
@@ -7371,6 +8208,7 @@ function selectTwitchClipForQueue(id,{packaged=true}={}){
 
   document.getElementById('qVideo').value='';
   clearUploadStatus();
+  resetLocalFileUploadUI();
   updateImportedClipBox();
   showPage('queue');
   document.getElementById('qPostTitle').focus();
@@ -7622,8 +8460,10 @@ function renderQueue(){
       : q.videoDeleted
         ? `<div class="muted video-name">🗑 ${esc(q.videoName||'Video')} · cleaned up automatically</div>`
         : q.videoName
-          ? `<div class="muted video-name">🎥 ${esc(q.videoName)}${q.videoSize?' · '+esc(formatBytes(q.videoSize)):''}${q.keepVideo?' · 📌 Keep':''}</div>`
+          ? `<div class="muted video-name">🎥 ${esc(q.videoName)}${q.videoSize?' · '+esc(formatBytes(q.videoSize)):''}${isDriveRecord(q)?' · ☁ Google Drive':''}${q.keepVideo?' · 📌 Keep':''}</div>`
           : `<div class="muted">🎥 No video attached</div>`;
+
+    const hasStoredVideo=(q.videoPath&&!q.videoDeleted)||(isDriveRecord(q)&&q.driveFileId&&!q.videoDeleted);
 
     div.innerHTML=`
       <div class="muted">${esc(q.date||'')} · ${esc(q.time||'')}</div>
@@ -7646,7 +8486,7 @@ function renderQueue(){
 
       <div class="row queue-actions">
         ${q.status==='Posted'?`<button class="btn secondary" data-social-link="youtube" data-social-q="${q.id}">Link YT</button><button class="btn secondary" data-social-link="tiktok" data-social-q="${q.id}">Link TikTok</button><button class="btn secondary" data-social-link="instagram" data-social-q="${q.id}">Link IG Reel</button>`:''}
-        ${q.videoPath&&!q.videoDeleted?`<button class="btn secondary" data-open-video="${q.id}">🎥 Open clip</button>`:''}
+        ${hasStoredVideo?`<button class="btn secondary" data-open-video="${q.id}">🎥 Open clip</button>`:''}
         ${q.twitchUrl?`<a class="btn secondary" href="${esc(q.twitchUrl)}" target="_blank" rel="noopener">🎮 Open Twitch</a>`:''}
         ${q.status!=='Posted'?`<button class="btn good" data-post="${q.id}">✅ Mark posted</button>`:''}
         <button class="btn danger" data-del-q="${q.id}">×</button>
@@ -7659,7 +8499,7 @@ function renderQueue(){
 
   root.querySelectorAll('[data-open-video]').forEach(btn=>btn.addEventListener('click',async()=>{
     const q=state.queue.find(x=>x.id==btn.dataset.openVideo);
-    if(q)await openStoredClip(q.videoPath);
+    if(q)await openStoredClip(q);
   }));
 
   root.querySelectorAll('[data-post]').forEach(btn=>btn.addEventListener('click',()=>{
@@ -7675,14 +8515,24 @@ function renderQueue(){
     const q=state.queue.find(x=>x.id==btn.dataset.delQ);
     if(!q)return;
 
-    const message=q.videoPath&&!q.videoDeleted
+    const hasStoredVideo=(q.videoPath&&!q.videoDeleted)||(isDriveRecord(q)&&q.driveFileId&&!q.videoDeleted);
+    const message=hasStoredVideo
       ? 'Delete this queued post and its uploaded video?'
       : 'Delete this queued post?';
 
     if(!confirm(message))return;
 
-    if(q.videoPath&&!q.videoDeleted){
-      try{await deleteStoredClip(q.videoPath)}catch(e){}
+    if(hasStoredVideo){
+      if(isDriveRecord(q)){
+        try{
+          await deleteStoredClip(q); // moves the Drive file to the trash (reversible)
+        }catch(err){
+          const keepGoing=confirm('Could not move the Google Drive video to the trash ('+(err.message||err)+').\n\nOK — delete only the queue entry and leave the video in Google Drive.\nCancel — keep everything.');
+          if(!keepGoing)return;
+        }
+      }else{
+        try{await deleteStoredClip(q)}catch(e){}
+      }
     }
 
     state.queue=state.queue.filter(x=>x.id!=btn.dataset.delQ);
