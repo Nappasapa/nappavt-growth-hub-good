@@ -4844,7 +4844,7 @@ html[data-theme="nappa"] #dashboardShell:after{
  <div class="card span4">
  <div class="row space"><h2>YouTube / Shorts</h2><span class="status" id="youtubeConnectionBadge">Not connected</span></div>
  <div id="youtubeConnectionCopy" class="muted"></div>
- <div class="note" style="margin-top:12px">Connect once with <b>/youtube_connect</b> → <b>/youtube_connect_finish</b>. Read-only YouTube + YouTube Analytics.</div>
+  <div class="note" style="margin-top:12px">Connect once with <b>/youtube_connect</b> → <b>/youtube_connect_finish</b>. Read-only YouTube + YouTube Analytics. This is a separate Google connection from Google Drive (clip uploads): each shows its own CONNECTED / REAUTH REQUIRED / NOT CONNECTED state and can be reconnected independently.</div>
  </div>
  <div class="card span4">
  <div class="row space"><h2>TikTok</h2><span class="status" id="tiktokConnectionBadge">Not connected</span></div>
@@ -6607,9 +6607,91 @@ function clearUploadStatus(){
      secret is used anywhere in this file.
    - Legacy clips uploaded to Supabase Storage keep working via
      provider-aware open/delete logic below.
+   ----------------------------------------------------------
+   GOOGLE OAUTH SPLIT (Error 400: invalid_request guard)
+   Google rejects a single authorization request that combines
+   YouTube scopes with the Drive scope ("This request contains
+   scopes that cannot be requested together"). The two Google
+   connections below must therefore ALWAYS stay independent:
+     1. YOUTUBE CONNECTION (Craftnode backend via Discord
+        /youtube_connect → /youtube_connect_finish):
+        GOOGLE_YOUTUBE_SCOPES (youtube.readonly +
+        yt-analytics.readonly). Browser code in this file MUST
+        NEVER request these scopes; they are listed here as a
+        reference so any future merge attempt fails fast in
+        assertSplitGoogleScopes().
+     2. GOOGLE DRIVE CONNECTION (this file, GIS token client):
+        GDRIVE_SCOPES (drive.file only) — clip uploads,
+        resumable video uploads, Growth-Hub-created files.
+   The two connections keep separate tokens and separate UI
+   state (YouTube badge vs Drive pill). Expiry/failure of one
+   must never disturb the other.
 ========================================================== */
+// Reference only: owned by the Craftnode backend YouTube OAuth flow
+// (Discord /youtube_connect). NEVER pass these to the browser GIS
+// token client in this file — see assertSplitGoogleScopes().
+const GOOGLE_YOUTUBE_SCOPES=[
+  'https://www.googleapis.com/auth/youtube.readonly',
+  'https://www.googleapis.com/auth/yt-analytics.readonly'
+];
+// The ONLY scope the browser Drive connection may request.
 const GDRIVE_CLIENT_ID='493230333651-9v9mkv5s68gj3v7tv7iqiedgrdggkptp.apps.googleusercontent.com';
 const GDRIVE_SCOPES='https://www.googleapis.com/auth/drive.file';
+// Canonical split: each Google connection maps to its own scope list.
+// Tokens and authorization state are never shared between entries.
+const GOOGLE_AUTH_CONNECTIONS={
+  youtube:{scopes:GOOGLE_YOUTUBE_SCOPES,owner:'craftnode-backend'},
+  drive:{scopes:[GDRIVE_SCOPES],owner:'browser-gis'}
+};
+function googleScopeList(scopeString){
+  return String(scopeString||'').split(/[\s,]+/).map(s=>s.trim()).filter(Boolean);
+}
+function googleScopeFamilies(scopeString){
+  const fams=new Set();
+  for(const s of googleScopeList(scopeString)){
+    if(/\/auth\/drive(\.|$)/.test(s))fams.add('drive');
+    else if(/\/auth\/youtube(\.|$)/.test(s)||/\/auth\/yt-analytics(\.|$)/.test(s))fams.add('youtube');
+  }
+  return [...fams];
+}
+// Fail-fast guard for Google Error 400 ("scopes that cannot be
+// requested together"): throws when ONE authorization request mixes
+// Drive-family and YouTube-family scopes. Call before every GIS
+// initTokenClient/requestAccessToken so a regression can never ship.
+function assertSplitGoogleScopes(label,scopeString){
+  const fams=googleScopeFamilies(scopeString);
+  if(fams.includes('drive')&&fams.includes('youtube')){
+    throw new DriveError(
+      'Refusing to combine YouTube and Google Drive scopes in one '+(label||'Google authorization')+
+      ' request — Google rejects this with Error 400 (invalid_request). '+
+      'Connect YouTube ('+GOOGLE_YOUTUBE_SCOPES.join(', ')+') and '+
+      'Google Drive ('+GDRIVE_SCOPES+') as two independent connections.',
+      'scope_mix');
+  }
+  return true;
+}
+function isDriveOnlyScopes(scopeString){
+  const f=googleScopeFamilies(scopeString);
+  return f.length===1&&f[0]==='drive';
+}
+function isYouTubeOnlyScopes(scopeString){
+  const f=googleScopeFamilies(scopeString);
+  return f.length===1&&f[0]==='youtube';
+}
+// INDEPENDENT YouTube connection state (Craftnode-owned). Pure helper:
+// derives CONNECTED / REAUTH REQUIRED / NOT CONNECTED from the
+// bot-synced socialConnections.youtube record WITHOUT touching any
+// Drive state, so a Drive failure can never demote YouTube analytics
+// (and vice versa). Drive expiry must leave `connected:true` alone.
+function youtubeConnectionState(conn){
+  conn=(conn&&typeof conn==='object')?conn:{};
+  if(conn.connected)return 'connected';
+  const err=String(conn.error||'');
+  if(conn.configured||conn.needsReauth||
+     /reauth|expir|revok|invalid_grant|invalid grant|unauthori|forbidden|\b401\b|\b403\b|token|consent|access denied|needs login|login required/i.test(err))
+    return 'reauth';
+  return 'not';
+}
 const GDRIVE_ROOT_FOLDER_NAME='NappaVT Growth Hub Clips';
 // Drive resumable uploads require chunk sizes in multiples of 256 KiB
 // (except the final chunk). 8 MiB = 32 × 256 KiB.
@@ -6671,6 +6753,12 @@ function gdriveRequestToken(timeoutMs=180000){
   if(gdriveTokenPromise)return gdriveTokenPromise;
   gdriveTokenPromise=(async()=>{
     await gdriveWaitForGsi();
+    // THE split enforcement point: the ONLY Google OAuth scope string
+    // this browser flow may construct is GDRIVE_SCOPES (drive.file).
+    // YouTube scopes live on the Craftnode backend and must never be
+    // merged in here — Google answers such a combined request with
+    // Error 400 (invalid_request). Throws 'scope_mix' on regression.
+    assertSplitGoogleScopes('Google Drive connection',GDRIVE_SCOPES);
     if(!gdriveTokenClient){
       gdriveTokenClient=window.google.accounts.oauth2.initTokenClient({
         client_id:GDRIVE_CLIENT_ID,
@@ -6750,9 +6838,17 @@ async function gdriveApi(path,opts={}){
   if(res.status===401){
     gdriveInvalidateToken();
     try{token=await gdriveEnsureToken({interactive:false})}
-    catch(e){throw new DriveError('Google Drive authorization expired. Click “Connect Google Drive” and try again.','auth')}
+    catch(e){
+      // Drive-only state flip: the YouTube badge is never touched here,
+      // so YouTube analytics keep working while Drive needs a reconnect.
+      try{if(typeof updateDriveConnUI==='function')updateDriveConnUI('reauth')}catch(_e){}
+      throw new DriveError('Google Drive authorization expired. Click “Reconnect Google Drive” and try again.','auth')
+    }
     res=await send(token);
-    if(res.status===401)throw new DriveError('Google Drive authorization expired. Click “Connect Google Drive” and try again.','auth');
+    if(res.status===401){
+      try{if(typeof updateDriveConnUI==='function')updateDriveConnUI('reauth')}catch(_e){}
+      throw new DriveError('Google Drive authorization expired. Click “Reconnect Google Drive” and try again.','auth');
+    }
   }
   return res;
 }
@@ -6995,7 +7091,9 @@ async function gdriveRunSession(file,session,{onProgress,onStatusLine,seq}){
       try{
         token=await gdriveEnsureToken({interactive:true});
       }catch(e){
-        throw new DriveError('Google Drive needs to be reconnected. Click “Connect Google Drive”, then retry the upload — it will resume from '+formatBytes(offset)+'.','auth');
+        // Drive-only reauth flag; YouTube connection state is untouched.
+        try{if(typeof updateDriveConnUI==='function')updateDriveConnUI('reauth')}catch(_e){}
+        throw new DriveError('Google Drive needs to be reconnected. Click “Reconnect Google Drive”, then retry the upload — it will resume from '+formatBytes(offset)+'.','auth');
       }
       const p=await gdriveProbeSession(session,file);
       if(p.done)return finalize(p.file);
@@ -7098,7 +7196,14 @@ function gdriveMarkConnectedHint(){try{localStorage.setItem('growthHubDriveConne
 function gdriveClearConnectedHint(){try{localStorage.removeItem('growthHubDriveConnectedHint')}catch(e){}}
 
 function updateDriveConnUI(state){
+  // 'error' is a legacy alias of the independent Drive REAUTH REQUIRED
+  // state (grant expired/revoked while the browser had connected once).
+  if(state==='error')state='reauth';
   if(state==='connected')gdriveMarkConnectedHint();
+  // 'reauth' keeps the hint (this browser DID connect before) so a
+  // later silent reconnect can still succeed; only an explicit 'not'
+  // clears it. The YouTube badge is never touched here — the two Google
+  // connections keep fully separate authorization state.
   else if(state==='not')gdriveClearConnectedHint();
   gdriveConnState=state;
   const pill=document.getElementById('driveConnState');
@@ -7118,9 +7223,16 @@ function updateDriveConnUI(state){
     btn.hidden=false;
     btn.disabled=true;
     btn.textContent='Connecting…';
+  }else if(state==='reauth'){
+    pill.hidden=false;
+    pill.className='drive-pill error';
+    pill.textContent='Google Drive · Reauth required';
+    btn.hidden=false;
+    btn.disabled=false;
+    btn.textContent='Reconnect Google Drive';
   }else{
     pill.hidden=false;
-    pill.className='drive-pill'+(state==='error'?' error':'');
+    pill.className='drive-pill';
     pill.textContent='Google Drive · Not connected';
     btn.hidden=false;
     btn.disabled=false;
@@ -7131,13 +7243,20 @@ function updateDriveConnUI(state){
 async function connectGoogleDrive(){
   const btn=document.getElementById('driveConnectBtn');
   if(btn&&btn.disabled)return;
+  // Remember whether this browser had a working Drive grant: an 'auth'
+  // failure on a FRESH connect means NOT CONNECTED, while the same
+  // failure on a previously-connected browser means REAUTH REQUIRED.
+  // A user-cancelled popup ('cancelled') is always NOT CONNECTED.
+  // None of these branches touch the YouTube connection state.
+  const wasConnected=(gdriveConnState==='connected'||gdriveConnState==='reauth');
   updateDriveConnUI('connecting');
   try{
     await gdriveEnsureToken({interactive:true});
     updateDriveConnUI('connected');
     showUploadStatus('Google Drive connected. New uploads go to your private “'+GDRIVE_ROOT_FOLDER_NAME+'” folder.','good');
   }catch(err){
-    updateDriveConnUI('not');
+    const authFailed=err&&(err.code==='auth'||err.name==='DriveError'&&/expir|reconnect|renew/i.test(err.message||''));
+    updateDriveConnUI(authFailed&&wasConnected?'reauth':'not');
     showUploadStatus((err&&err.message)||'Could not connect Google Drive.','error');
   }
 }
@@ -7157,16 +7276,20 @@ async function gdriveSilentReconnect(){
   if(!hint)return;
   updateDriveConnUI('connecting');
   let settled=false;
+  // A hint means this browser connected before, so if the silent probe
+  // cannot renew the grant the honest state is REAUTH REQUIRED (not
+  // NOT CONNECTED). YouTube state is untouched either way.
+  const stale=()=>updateDriveConnUI('reauth');
   const watchdog=setTimeout(()=>{
     if(settled)return;
     settled=true;
-    updateDriveConnUI('not');
+    stale();
   },5000);
   try{
     await gdriveRequestToken(5000);
     if(!settled){settled=true;clearTimeout(watchdog);updateDriveConnUI('connected');}
   }catch(err){
-    if(!settled){settled=true;clearTimeout(watchdog);updateDriveConnUI('not');}
+    if(!settled){settled=true;clearTimeout(watchdog);stale();}
   }
 }
 
@@ -7343,8 +7466,8 @@ async function openStoredClip(q){
       if(err&&(err.code==='not_found'||err.code==='gone')){
         alert('This video is no longer in Google Drive. It may have been deleted there. You can remove this queue entry or attach a new video.');
       }else if(err&&err.code==='auth'){
-        updateDriveConnUI('not');
-        alert('Google Drive needs to be reconnected before this clip can open. Click “Connect Google Drive” in Prepare a post, then try again.');
+        updateDriveConnUI('reauth');
+        alert('Google Drive needs to be reconnected before this clip can open. Click “Reconnect Google Drive” in Prepare a post, then try again.');
       }else{
         alert('Could not open the Google Drive clip: '+(err.message||err));
       }
@@ -8718,13 +8841,24 @@ function renderContentPerformance(){
     el.textContent=connection.connected?'Connected':connection.configured?'Needs login':'Needs setup';
     el.className='status '+(connection.connected?'s-ready':connection.configured?'s-edit':'');
   };
-  applyBadge(ytBadge,yt);
+  // YOUTUBE is an INDEPENDENT Google connection (Craftnode backend OAuth:
+  // youtube.readonly + yt-analytics.readonly ONLY — never drive.file).
+  // States: CONNECTED / REAUTH REQUIRED / NOT CONNECTED. This rendering
+  // reads only state.socialConnections.youtube, so Google Drive expiry
+  // can never demote YouTube analytics (and vice versa): YouTube keeps
+  // working when Drive is disconnected, Drive uploads keep working
+  // when YouTube is disconnected.
+  const ytState=youtubeConnectionState(yt);
+  ytBadge.textContent=ytState==='connected'?'CONNECTED':ytState==='reauth'?'REAUTH REQUIRED':'NOT CONNECTED';
+  ytBadge.className='status '+(ytState==='connected'?'s-ready':ytState==='reauth'?'s-edit':'');
   applyBadge(ttBadge,tt);
   applyBadge(igBadge,ig);
 
   document.getElementById('youtubeConnectionCopy').textContent=yt.connected
     ?`${yt.channelTitle||'YouTube connected'} · ${yt.videos||0} recent uploads synced.`
-    :yt.error||'Configure YouTube credentials on Craftnode, then connect once in Discord.';
+    :ytState==='reauth'
+      ?(yt.error?yt.error+' ':'YouTube authorization expired. ')+'Reconnect with /youtube_connect → /youtube_connect_finish in Discord.'
+      :yt.error||'Configure YouTube credentials on Craftnode, then connect once in Discord.';
   document.getElementById('tiktokConnectionCopy').textContent=tt.connected
     ?`${tt.displayName||'TikTok connected'} · ${tt.videos||0} recent public videos synced.`
     :tt.error||'Configure TikTok developer credentials, then connect once in Discord.';
@@ -9243,6 +9377,17 @@ setTimeout(()=>{try{gdriveSilentReconnect()}catch(e){}},600);
   const shell=document.getElementById('dashboardShell');
   if(shell){
     const observer=new MutationObserver(repairControlRoomShell);
+    observer.observe(shell,{attributes:true,attributeFilter:['class','style']});
+  }
+
+  // Expose only for diagnostics if needed.
+  window.repairControlRoomShell=repairControlRoomShell;
+})();
+</script>
+
+</body>
+</html>
+ionObserver(repairControlRoomShell);
     observer.observe(shell,{attributes:true,attributeFilter:['class','style']});
   }
 
