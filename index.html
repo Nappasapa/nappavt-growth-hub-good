@@ -7090,7 +7090,16 @@ async function gdriveUploadFile(file,{onProgress,onStatusLine}={}){
 
 /* ---------- Drive connection UI ---------- */
 
+// Non-secret convenience hint ("this browser connected once") so the
+// dashboard can attempt a SILENT reconnect on page load. This is NOT a
+// token — no credential is ever stored; if Google's grant is missing or
+// expired, the probe simply gives up and the pill returns to Not connected.
+function gdriveMarkConnectedHint(){try{localStorage.setItem('growthHubDriveConnectedHint','1')}catch(e){}}
+function gdriveClearConnectedHint(){try{localStorage.removeItem('growthHubDriveConnectedHint')}catch(e){}}
+
 function updateDriveConnUI(state){
+  if(state==='connected')gdriveMarkConnectedHint();
+  else if(state==='not')gdriveClearConnectedHint();
   gdriveConnState=state;
   const pill=document.getElementById('driveConnState');
   const btn=document.getElementById('driveConnectBtn');
@@ -7130,6 +7139,34 @@ async function connectGoogleDrive(){
   }catch(err){
     updateDriveConnUI('not');
     showUploadStatus((err&&err.message)||'Could not connect Google Drive.','error');
+  }
+}
+
+// Silent auto-reconnect after a page reload: if this browser connected
+// before (hint flag) AND Google still has a valid grant, the token client
+// returns a token with no popup and the pill flips to Connected ✓ on its
+// own. In every other case (never connected / grant expired / popup would
+// be required) the probe gives up after a few seconds and the dashboard
+// stays exactly as before — popups are never auto-opened by this probe.
+let gdriveSilentProbeDone=false;
+async function gdriveSilentReconnect(){
+  if(gdriveSilentProbeDone)return;
+  gdriveSilentProbeDone=true;
+  let hint=false;
+  try{hint=localStorage.getItem('growthHubDriveConnectedHint')==='1'}catch(e){}
+  if(!hint)return;
+  updateDriveConnUI('connecting');
+  let settled=false;
+  const watchdog=setTimeout(()=>{
+    if(settled)return;
+    settled=true;
+    updateDriveConnUI('not');
+  },5000);
+  try{
+    await gdriveRequestToken(5000);
+    if(!settled){settled=true;clearTimeout(watchdog);updateDriveConnUI('connected');}
+  }catch(err){
+    if(!settled){settled=true;clearTimeout(watchdog);updateDriveConnUI('not');}
   }
 }
 
@@ -9056,6 +9093,9 @@ document.getElementById('resetAll').addEventListener('click',async()=>{
 
 function renderAll(){renderRoutine();renderStreams();renderStreamLibrary();renderClips();renderQueue();renderTwitchClips();renderContentPerformance();renderDashboard();renderAnalytics();renderAdvisorNotes();renderStorageStats()}
 renderAll();
+// Attempt a silent Google Drive reconnect after startup (no popups; see
+// gdriveSilentReconnect). Runs once, shortly after first paint.
+setTimeout(()=>{try{gdriveSilentReconnect()}catch(e){}},600);
 })();
 </script>
 
