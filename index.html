@@ -833,6 +833,10 @@ th{
   font-size:9px;
   font-weight:800;
 }
+.nappa-title-view-controls{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-top:9px}
+.nappa-title-view-controls label{display:flex;align-items:center;gap:5px;color:var(--muted2);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.nappa-title-view-controls select{min-height:29px;padding:5px 7px;border:1px solid var(--line);border-radius:7px;background:var(--panel2);color:var(--text);font-size:10px;font-weight:700}
+.nappa-title-filter-note{margin-top:7px;color:var(--muted2);font-size:9px;line-height:1.4}
 .nappa-pack-context{
   margin-top:7px;
   color:var(--muted2);
@@ -881,7 +885,21 @@ th{
 .nappa-title-option{width:100%;min-height:0;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);color:var(--text);text-align:left;font-size:11px;font-weight:800;line-height:1.4}
 .nappa-title-option:hover{border-color:var(--line-strong);background:var(--panel3)}
 .nappa-title-option.selected{border-color:color-mix(in srgb,var(--accent) 55%,var(--line));background:var(--accent-soft)}
+.nappa-title-option[aria-pressed="true"]{box-shadow:inset 3px 0 0 var(--accent)}
+.nappa-title-option:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .nappa-copy-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.action-toast{position:fixed;right:22px;bottom:22px;z-index:900;padding:11px 14px;border:1px solid var(--line-strong);border-radius:7px;background:var(--panel2);color:var(--text);box-shadow:0 14px 35px rgba(0,0,0,.3);font-size:12px;font-weight:650;max-width:min(420px,calc(100vw - 32px));}
+.action-toast.good{border-color:color-mix(in srgb,var(--good) 55%,var(--line));color:var(--good)}
+.action-toast.error{border-color:color-mix(in srgb,var(--bad) 55%,var(--line));color:var(--bad)}
+.health-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-top:12px}
+.health-item{min-width:0;padding:11px;border:1px solid var(--line);border-radius:7px;background:var(--panel2)}
+.health-item-head{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.health-item b{font-size:11px}.health-item p{margin:6px 0 0;color:var(--muted);font-size:10px;line-height:1.4}
+.health-dot{width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:var(--muted2)}
+.health-dot.good{background:var(--good)}.health-dot.warn{background:var(--warn)}.health-dot.bad{background:var(--bad)}
+@media(max-width:1180px){.health-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:640px){.health-grid{grid-template-columns:1fr 1fr}.action-toast{right:12px;bottom:calc(88px + env(safe-area-inset-bottom))}}
+
 .match-suggestion{margin-top:9px;padding:10px;border:1px solid color-mix(in srgb,var(--warn) 40%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--warn) 7%,var(--panel2))}
 .match-confidence-high{color:var(--good)}
 .match-confidence-medium{color:var(--warn)}
@@ -4548,6 +4566,10 @@ html[data-theme="nappa"] #dashboardShell:after{
  <div class="metric"><span>Latest avg viewers</span><b id="kAvg">0</b></div>
  </div>
  </div>
+ <div class="card span12" id="integrationHealthCard">
+ <div class="row space"><div><h2>Integration health</h2><div class="muted">Connection state comes from the latest verified sync or auth response, not from the dashboard loading.</div></div><span class="status" id="healthLastSync">No sync recorded</span></div>
+ <div class="health-grid" id="integrationHealth" aria-live="polite"></div>
+ </div>
  <div class="card span7 routine-card">
  <div class="row space"><div><h2>Pre-stream checklist</h2><div class="muted">Reset this whenever you start prepping a new stream.</div></div><button class="btn secondary" id="resetRoutine">Reset</button></div>
  <div id="routineList"></div>
@@ -5274,7 +5296,12 @@ document.getElementById('signOut').addEventListener('click',async()=>{
 
 /* ===== Existing Growth Hub data/app logic ===== */
 const KEY='nappavt_growth_hub_v3';
-const today=()=>new Date().toISOString().slice(0,10);
+const APP_TIME_ZONE='Europe/Amsterdam';
+function today(){
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:APP_TIME_ZONE,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+  const byType=Object.fromEntries(parts.filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
 let state={fields:{},routine:{},streams:[],clips:[],queue:[],twitchClips:[],twitchStatus:{},streamTrackingStatus:{},liveStreamSession:null,streamAudienceHistory:{},streamLastReport:null,twitchHistoryStatus:{},twitchHistoryImportRequested:false,socialConnections:{},socialVideos:{youtube:[],tiktok:[],instagram:[]},socialSyncStatus:{},socialRefreshRequested:false,theme:'dark'};
 try{const saved=localStorage.getItem(KEY);if(saved)state=Object.assign(state,JSON.parse(saved))}catch(e){}
 for(const k of ['fields','routine'])if(!state[k])state[k]={};
@@ -5301,6 +5328,8 @@ let cloudSaveBusy=false;
 let cloudSavePending=false;
 let cloudLoadFallback=false;
 let cloudRecoveryTimer=null;
+let cloudRecoveryAttempts=0;
+let cloudRetryCount=0;
 let lastRemoteUpdatedAt='';
 let localDirty=false;
 let fullRefreshBusy=false;
@@ -5308,6 +5337,26 @@ let workspaceRealtimeChannel=null;
 let advisorRealtimeChannel=null;
 let advisorNotes=[];
 let lastCloudSaveError=null;
+let cloudRevision=0;
+let streamAddBusy=false;
+let advisorInviteBusy=false;
+let advisorNoteBusy=false;
+let queueActionBusy=new Set();
+let twitchRefreshBusy=false;
+let activeToastTimer=null;
+
+function cloneJson(value){
+  try{return JSON.parse(JSON.stringify(value));}catch(e){return null}
+}
+function notifyUser(message,type=''){
+  let toast=document.getElementById('actionToast');
+  if(!toast){
+    toast=document.createElement('div');toast.id='actionToast';toast.className='action-toast';toast.setAttribute('role','status');toast.setAttribute('aria-live','polite');
+    document.body.appendChild(toast);
+  }
+  toast.className='action-toast'+(type?' '+type:'');toast.textContent=String(message||'');toast.hidden=false;
+  clearTimeout(activeToastTimer);activeToastTimer=setTimeout(()=>{toast.hidden=true},5200);
+}
 
 const syncPill=document.getElementById('syncPill');
 const syncText=document.getElementById('syncText');
@@ -5343,7 +5392,7 @@ function clearRealtime(){
 }
 async function claimInviteIfNeeded(){
   if(!INVITE_TOKEN||!sb||!currentUser)return null;
-  const {data,error}=await sb.rpc('claim_growth_hub_invite',{invite_token:INVITE_TOKEN});
+  const {data,error}=await withTimeout(sb.rpc('claim_growth_hub_invite',{invite_token:INVITE_TOKEN}),8000,'Advisor invite verification timed out');
   if(error)throw error;
   try{
     sessionStorage.removeItem('growthHubPendingInvite');
@@ -5353,7 +5402,7 @@ async function claimInviteIfNeeded(){
 }
 async function getWorkspaceAccessStatus(){
   if(!sb||!currentUser)return {role:'none'};
-  const {data,error}=await sb.rpc('growth_hub_access_status');
+  const {data,error}=await withTimeout(sb.rpc('growth_hub_access_status'),8000,'Workspace access verification timed out');
   if(error)throw error;
   return data&&typeof data==='object'?data:{role:'none'};
 }
@@ -5570,19 +5619,61 @@ function mergeBotQueueFields(remoteState){
 }
 
 
+const NAPPA_PACKAGE_FIELDS=[
+  'packageTone','packageVariant','packageSelectedIndex','packageSelectedTitle','packageSelectedTitleId',
+  'packageSelectionState','packageRejectedTitles','packageLastUsedAt','packageLastTitle','packageUserContext',
+  'packageTitleEdits','packageOptionFilter','packageOptionSort'
+];
+function packageTimestamp(value){
+  const time=Date.parse(String(value||''));
+  return Number.isFinite(time)?time:0;
+}
+function copyPackageFields(local,remote){
+  const localHas=NAPPA_PACKAGE_FIELDS.some(key=>local&&local[key]!==undefined);
+  const remoteHas=NAPPA_PACKAGE_FIELDS.some(key=>remote&&remote[key]!==undefined);
+  if(!localHas&&!remoteHas)return {};
+  // A package edit is a user-owned field. Keep it when the browser has a
+  // newer timestamp, or when the bot's Twitch refresh did not carry package
+  // fields at all. This prevents a metadata refresh from selecting a prefix
+  // or a different generated title over a newer local choice.
+  const localAt=packageTimestamp(local?.packageLastUsedAt);
+  const remoteAt=packageTimestamp(remote?.packageLastUsedAt);
+  const useLocal=localHas&&(!remoteHas||localAt>=remoteAt);
+  const source=useLocal?local:remote;
+  const result={};
+  for(const key of NAPPA_PACKAGE_FIELDS){
+    if(source&&source[key]!==undefined)result[key]=cloneJson(source[key]);
+  }
+  return result;
+}
+function mergeTwitchClipRecord(local,remote){
+  if(!local)return cloneJson(remote)||{};
+  if(!remote)return cloneJson(local)||{};
+  return Object.assign({},remote,copyPackageFields(local,remote));
+}
 function mergeBotTwitchFields(remoteState){
   if(!remoteState)return false;
   let changed=false;
 
   if(remoteState.twitchStatus&&typeof remoteState.twitchStatus==='object'){
     const before=JSON.stringify(state.twitchStatus||{});
-    state.twitchStatus={...remoteState.twitchStatus};
+    state.twitchStatus=cloneJson(remoteState.twitchStatus)||{};
     if(JSON.stringify(state.twitchStatus)!==before)changed=true;
   }
 
   const remoteRows=Array.isArray(remoteState.twitchClips)?remoteState.twitchClips:[];
-  if(JSON.stringify(remoteRows)!==JSON.stringify(state.twitchClips||[])){
-    state.twitchClips=remoteRows.map(c=>({...c}));
+  const localRows=Array.isArray(state.twitchClips)?state.twitchClips:[];
+  const localById=new Map(localRows.filter(Boolean).map(c=>[String(c.id),c]));
+  const remoteIds=new Set(remoteRows.filter(Boolean).map(c=>String(c.id)));
+  // Remote remains authoritative for Twitch metadata and ordering. Local-only
+  // rows are retained while dirty so a just-imported clip cannot disappear
+  // during the read-before-write merge.
+  const merged=remoteRows.filter(Boolean).map(remote=>
+    mergeTwitchClipRecord(localById.get(String(remote.id)),remote)
+  );
+  localRows.filter(local=>local&&!remoteIds.has(String(local.id))).forEach(local=>merged.push(cloneJson(local)||local));
+  if(JSON.stringify(merged)!==JSON.stringify(localRows)){
+    state.twitchClips=merged;
     changed=true;
   }
 
@@ -5668,14 +5759,20 @@ async function refreshFullCloudState({force=false}={}){
   if(isOwner()&&(cloudSaveBusy||localDirty))return false;
   fullRefreshBusy=true;
   try{
-    const {data,error}=await sb.from('dashboard_state')
-      .select('state,updated_at')
-      .eq('user_id',workspaceOwnerId)
-      .maybeSingle();
+    const {data,error}=await withTimeout(
+      sb.from('dashboard_state')
+        .select('state,updated_at')
+        .eq('user_id',workspaceOwnerId)
+        .maybeSingle(),
+      8000,
+      'Supabase refresh timed out'
+    );
     if(error)throw error;
     if(!data||!data.state)return false;
     const remoteUpdated=String(data.updated_at||'');
-    if(!force&&remoteUpdated&&lastRemoteUpdatedAt&&remoteUpdated<=lastRemoteUpdatedAt)return false;
+    // `force` means re-check now; it must not make an older response win over
+    // the last accepted cloud version (important for focus/realtime races).
+    if(remoteUpdated&&lastRemoteUpdatedAt&&remoteUpdated<=lastRemoteUpdatedAt)return false;
 
     // Full remote state is authoritative when no unsaved owner edit exists.
     // This means every tab updates: queue, Twitch clips, streams, social stats,
@@ -5712,38 +5809,57 @@ async function writeCloudStateNow(){
     return {ok:false,error:'busy'};
   }
   cloudSaveBusy=true;
+  const saveRevision=cloudRevision;
   setSyncStatus('syncing','Saving…');
   try{
-    // Pull only bot-controlled queue changes immediately before saving so a
-    // stale browser cannot erase a Discord Mark Posted / Snooze action.
-    const {data:remote,error:readError}=await sb
-      .from('dashboard_state')
-      .select('state,updated_at')
-      .eq('user_id',workspaceOwnerId)
-      .maybeSingle();
+    // Pull only bot-controlled changes immediately before saving so a stale
+    // browser cannot erase Discord status, Twitch metadata or social data.
+    const {data:remote,error:readError}=await withTimeout(
+      sb.from('dashboard_state')
+        .select('state,updated_at')
+        .eq('user_id',workspaceOwnerId)
+        .maybeSingle(),
+      8000,
+      'Supabase save preflight timed out'
+    );
     if(readError)throw readError;
     if(remote){mergeBotQueueFields(remote.state);mergeBotTwitchFields(remote.state);mergeBotStreamFields(remote.state);mergeBotSocialFields(remote.state);}
 
+    // Supabase serializes object references after an awaited request begins.
+    // Send an immutable snapshot instead, so a click/realtime callback during
+    // the upsert cannot partially change the payload being written.
+    const snapshot=cloneJson(state);
+    if(!snapshot)throw new Error('Dashboard state could not be serialized safely.');
     const payload={
       user_id:workspaceOwnerId,
-      state:state,
+      state:snapshot,
       updated_at:new Date().toISOString()
     };
-    const {error}=await sb.from('dashboard_state').upsert(payload,{onConflict:'user_id'});
+    const {error}=await withTimeout(
+      sb.from('dashboard_state').upsert(payload,{onConflict:'user_id'}),
+      10000,
+      'Supabase save timed out'
+    );
     if(error)throw error;
     writeLocalState();
-    localDirty=false;
     lastRemoteUpdatedAt=payload.updated_at;
-    setSyncStatus('synced','Live synced');
+    cloudRetryCount=0;cloudRecoveryAttempts=0;cloudLoadFallback=false;
+    const changedDuringSave=cloudRevision!==saveRevision;
+    localDirty=changedDuringSave;
+    setSyncStatus('synced',changedDuringSave?'Saved · syncing latest edit':'Live synced');
     return {ok:true};
   }catch(err){
     console.error('Cloud save failed:',err);
     lastCloudSaveError=err;
-    setSyncStatus('error','Sync error');
+    cloudLoadFallback=true;
+    cloudRetryCount=Math.min(cloudRetryCount+1,6);
+    setSyncStatus('error','Sync error · retry available');
+    notifyUser('Could not save the latest dashboard changes. They remain on this device and will retry.','error');
+    scheduleCloudRecovery(Math.min(30000,3000*Math.pow(2,cloudRetryCount-1)));
     return {ok:false,error:err};
   }finally{
     cloudSaveBusy=false;
-    if(cloudSavePending){
+    if(cloudSavePending||localDirty&&cloudRevision!==saveRevision){
       cloudSavePending=false;
       await writeCloudStateNow();
     }
@@ -5752,10 +5868,17 @@ async function writeCloudStateNow(){
 
 function scheduleCloudSave(delay=500){
   if(!currentUser||!sb||!isOwner())return;
+  cloudRecoveryAttempts=0;
+  cloudRevision++;
   localDirty=true;
   clearTimeout(cloudSaveTimer);
   setSyncStatus('syncing','Saving…');
   cloudSaveTimer=setTimeout(()=>writeCloudStateNow(),delay);
+}
+async function flushCloudSave(){
+  if(!currentUser||!sb||!isOwner())return {ok:true,localOnly:true};
+  clearTimeout(cloudSaveTimer);cloudSaveTimer=null;
+  return writeCloudStateNow();
 }
 
 // Full dashboard auto-update. Realtime handles most changes immediately;
@@ -5764,6 +5887,16 @@ setInterval(()=>{if(!document.hidden)refreshEverything()},12000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshEverything({force:true})});
 window.addEventListener('focus',()=>refreshEverything({force:true}));
 window.addEventListener('online',()=>refreshEverything({force:true}));
+window.addEventListener('storage',event=>{
+  if(!event.key||event.key!==workspaceCacheKey()||!event.newValue||localDirty||cloudSaveBusy||!currentUser)return;
+  try{
+    const incoming=normalizeState(JSON.parse(event.newValue));
+    state=incoming;applyStateToUI();
+    setSyncStatus('synced','Updated from another tab');
+  }catch(err){
+    console.warn('Growth Hub cross-tab state update ignored:',err);
+  }
+});
 
 function withTimeout(promise,ms,label='Request timed out'){
   let timer;
@@ -5777,11 +5910,26 @@ function withTimeout(promise,ms,label='Request timed out'){
 
 function scheduleCloudRecovery(delay=12000){
   if(cloudRecoveryTimer||!currentUser||!sb)return;
+  if(cloudRecoveryAttempts>=6){
+    setSyncStatus('error','Sync paused · retry on next change or reconnect');
+    return;
+  }
+  cloudRecoveryAttempts++;
   cloudRecoveryTimer=setTimeout(async()=>{
     cloudRecoveryTimer=null;
     if(!cloudLoadFallback||!currentUser||!sb)return;
 
     try{
+      // A recovered owner tab may have edits that were made while Supabase
+      // was offline. Persist those first; never replace them with an older
+      // cloud snapshot merely because recovery succeeded.
+      if(isOwner()&&localDirty){
+        const saved=await flushCloudSave();
+        if(!saved.ok){scheduleCloudRecovery(15000);return;}
+        cloudLoadFallback=false;cloudRecoveryAttempts=0;
+        setSyncStatus('synced','Synced');
+        return;
+      }
       const {data,error}=await withTimeout(
         sb.from('dashboard_state')
           .select('state,updated_at')
@@ -5797,7 +5945,7 @@ function scheduleCloudRecovery(delay=12000){
         // state. Normal local cache resumes after this.
         state=normalizeState(data.state);
         writeLocalState();
-        cloudLoadFallback=false;
+        cloudLoadFallback=false;cloudRecoveryAttempts=0;
         applyStateToUI();
         setSyncStatus('synced','Synced');
         loginMode.textContent='Cloud sync active · same dashboard on your signed-in devices.';
@@ -5815,7 +5963,16 @@ async function loadCloudState(user){
   if(!sb||!user)return;
   currentUser=user;
   setSyncStatus('syncing','Loading…');
-  const access=await resolveWorkspace(user);
+  let access;
+  try{
+    access=await resolveWorkspace(user);
+  }catch(err){
+    console.warn('Growth Hub access verification failed:',err);
+    currentUser=null;workspaceOwnerId=null;workspaceRole='unknown';workspaceMember=null;
+    openLogin();
+    authMsg('Could not verify your Growth Hub access. Check your connection and sign in again.','error');
+    return;
+  }
 
   if(workspaceRole==='revoked'){
     await lockRevokedAdvisor('Your Advisor access was removed by the Growth Hub Owner.');
@@ -5832,7 +5989,7 @@ async function loadCloudState(user){
   try{
     const {data,error}=await withTimeout(
       sb.from('dashboard_state')
-        .select('state')
+        .select('state,updated_at')
         .eq('user_id',workspaceOwnerId)
         .maybeSingle(),
       8000,
@@ -5937,20 +6094,29 @@ function randomInviteToken(){
   return Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
 }
 async function createAdvisorInvite(){
-  if(!sb||!currentUser||!isOwner())return;
-  const token=randomInviteToken();
-  const email=(document.getElementById('advisorInviteEmail')?.value||'').trim();
-  const expires=new Date(Date.now()+7*24*60*60*1000).toISOString();
-  const {error}=await sb.from('growth_hub_invites').insert({
-    token,owner_user_id:currentUser.id,email_hint:email||null,expires_at:expires
-  });
-  const box=document.getElementById('advisorInviteResult');
-  if(error){box.innerHTML=`<div class="note">Could not create invite: ${esc(error.message)}</div>`;return}
-  const link=`${PUBLIC_APP_URL}/?invite=${encodeURIComponent(token)}`;
-  box.innerHTML=`<div class="invite-box"><b>Advisor invite — expires in 7 days</b><br><span id="advisorInviteLink">${esc(link)}</span><div class="row" style="margin-top:8px"><button class="btn secondary" id="copyAdvisorInvite">Copy invite link</button></div></div>`;
-  document.getElementById('copyAdvisorInvite')?.addEventListener('click',async e=>{
-    try{await navigator.clipboard.writeText(link);e.currentTarget.textContent='Copied ✓'}catch(err){prompt('Copy this invite link:',link)}
-  });
+  const button=document.getElementById('createAdvisorInvite');
+  if(advisorInviteBusy||!sb||!currentUser||!isOwner())return;
+  advisorInviteBusy=true;if(button){button.disabled=true;button.textContent='Creating…'}
+  try{
+    const token=randomInviteToken();
+    const email=(document.getElementById('advisorInviteEmail')?.value||'').trim();
+    const expires=new Date(Date.now()+7*24*60*60*1000).toISOString();
+    const {error}=await sb.from('growth_hub_invites').insert({
+      token,owner_user_id:currentUser.id,email_hint:email||null,expires_at:expires
+    });
+    const box=document.getElementById('advisorInviteResult');
+    if(error){box.innerHTML=`<div class="note">Could not create invite: ${esc(error.message)}</div>`;notifyUser('Advisor invite was not created. Try again.','error');return}
+    const link=`${PUBLIC_APP_URL}/?invite=${encodeURIComponent(token)}`;
+    box.innerHTML=`<div class="invite-box"><b>Advisor invite — expires in 7 days</b><br><span id="advisorInviteLink">${esc(link)}</span><div class="row" style="margin-top:8px"><button class="btn secondary" id="copyAdvisorInvite">Copy invite link</button></div></div>`;
+    document.getElementById('copyAdvisorInvite')?.addEventListener('click',async e=>{
+      try{await navigator.clipboard.writeText(link);e.currentTarget.textContent='Copied ✓'}catch(err){prompt('Copy this invite link:',link)}
+    });
+    notifyUser('Advisor invite created.','good');
+  }catch(err){
+    notifyUser('Could not create the Advisor invite. Try again.','error');
+  }finally{
+    advisorInviteBusy=false;if(button){button.disabled=false;button.textContent='Create 7-day invite'}
+  }
 }
 async function loadAdvisorMembers(){
   const root=document.getElementById('advisorMembersList');
@@ -6000,17 +6166,23 @@ function renderAdvisorNotes(){
   root.querySelectorAll('[data-delete-note]').forEach(btn=>btn.addEventListener('click',()=>deleteAdvisorNote(btn.dataset.deleteNote)));
 }
 async function submitAdvisorNote(){
-  if(!sb||!currentUser||workspaceRole!=='advisor')return;
+  const button=document.getElementById('submitAdvisorNote');
+  if(advisorNoteBusy||!sb||!currentUser||workspaceRole!=='advisor')return;
   const type=document.getElementById('advisorNoteType').value;
   const target=(document.getElementById('advisorNoteTarget').value||'').trim();
   const body=(document.getElementById('advisorNoteBody').value||'').trim();
   if(!body){alert('Write some feedback first.');return}
-  const {error}=await sb.from('growth_hub_advisor_notes').insert({
-    owner_user_id:workspaceOwnerId,author_user_id:currentUser.id,author_email:currentUser.email||workspaceMember?.email||'Advisor',target_type:type,target_ref:target||null,body
-  });
-  if(error){alert('Could not send feedback: '+error.message);return}
-  document.getElementById('advisorNoteTarget').value='';document.getElementById('advisorNoteBody').value='';
-  await loadAdvisorNotes();
+  advisorNoteBusy=true;if(button){button.disabled=true;button.textContent='Sending…'}
+  try{
+    const {error}=await sb.from('growth_hub_advisor_notes').insert({
+      owner_user_id:workspaceOwnerId,author_user_id:currentUser.id,author_email:currentUser.email||workspaceMember?.email||'Advisor',target_type:type,target_ref:target||null,body
+    });
+    if(error){alert('Could not send feedback: '+error.message);return}
+    document.getElementById('advisorNoteTarget').value='';document.getElementById('advisorNoteBody').value='';
+    await loadAdvisorNotes();notifyUser('Feedback sent.','good');
+  }finally{
+    advisorNoteBusy=false;if(button){button.disabled=false;button.textContent='Send feedback'}
+  }
 }
 async function resolveAdvisorNote(id){
   if(!isOwner())return;
@@ -6103,20 +6275,26 @@ document.getElementById('sDate').value=today();
 document.getElementById('qDate').value=today();
 document.getElementById('qTime').value='18:30';
 
-document.getElementById('addStream').addEventListener('click',()=>{
+document.getElementById('addStream').addEventListener('click',async()=>{
+  const button=document.getElementById('addStream');
+  if(streamAddBusy)return;
   const game=document.getElementById('sGame').value.trim();if(!game){alert('Add the game/category first.');return}
+  streamAddBusy=true;button.disabled=true;button.textContent='Saving…';
   state.streams.unshift({
     id:Date.now(),autoTracked:false,source:'Manual',
     date:document.getElementById('sDate').value||today(),game,
-    hours:num(document.getElementById('sHours').value),avg:num(document.getElementById('sAvg').value),
-    peak:num(document.getElementById('sPeak').value),follows:num(document.getElementById('sFollows').value),
-    returning:num(document.getElementById('sReturning').value),clips:num(document.getElementById('sClips').value),
-    uniqueChatters:0,newChatters:0,returningRate:0,chatMessages:0,
+    hours:optionalNum(document.getElementById('sHours').value),avg:optionalNum(document.getElementById('sAvg').value),
+    peak:optionalNum(document.getElementById('sPeak').value),follows:optionalNum(document.getElementById('sFollows').value),
+    returning:optionalNum(document.getElementById('sReturning').value),clips:optionalNum(document.getElementById('sClips').value),
+    uniqueChatters:null,newChatters:null,returningRate:null,chatMessages:null,
     best:document.getElementById('sBest').value.trim(),notes:document.getElementById('sNotes').value.trim(),
     createdAt:new Date().toISOString()
   });
   ['sGame','sHours','sAvg','sPeak','sFollows','sReturning','sClips','sBest','sNotes'].forEach(id=>document.getElementById(id).value='');
   save();
+  const saved=await flushCloudSave();
+  if(saved.ok){notifyUser('Stream saved.','good')}else if(!saved.localOnly){notifyUser('Stream saved locally; cloud sync will retry.','error')}
+  streamAddBusy=false;button.disabled=false;button.textContent='Add stream';
 });
 
 function streamDateLabel(s){
@@ -6125,6 +6303,7 @@ function streamDateLabel(s){
   const d=new Date(raw);
   if(Number.isNaN(d.getTime()))return String(s.date||'');
   return d.toLocaleDateString([],{
+    timeZone:APP_TIME_ZONE,
     weekday:'short',day:'2-digit',month:'short',year:'numeric'
   });
 }
@@ -6132,7 +6311,7 @@ function streamTimeLabel(value){
   if(!value)return '';
   const d=new Date(value);
   if(Number.isNaN(d.getTime()))return '';
-  return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  return d.toLocaleTimeString([],{timeZone:APP_TIME_ZONE,hour:'2-digit',minute:'2-digit'});
 }
 function durationLabelFromMinutes(minutes){
   const total=Math.max(0,Math.round(num(minutes)));
@@ -6140,25 +6319,28 @@ function durationLabelFromMinutes(minutes){
   return h?`${h}h ${m}m`:`${m}m`;
 }
 function streamDurationLabel(s){
-  if(s.durationMinutes!==undefined)return durationLabelFromMinutes(s.durationMinutes);
-  if(s.hours!==undefined)return durationLabelFromMinutes(num(s.hours)*60);
-  return '—';
+  if(metricAvailable(s.durationMinutes))return durationLabelFromMinutes(s.durationMinutes);
+  if(metricAvailable(s.hours))return durationLabelFromMinutes(num(s.hours)*60);
+  return 'Unavailable';
 }
 function retentionValue(s){
-  if(s.returningRate!==undefined)return num(s.returningRate);
-  const unique=num(s.uniqueChatters);
-  return unique?num(s.returning)/unique*100:0;
+  if(metricAvailable(s.returningRate))return num(s.returningRate);
+  if(metricAvailable(s.uniqueChatters)&&metricAvailable(s.returning)){
+    const unique=num(s.uniqueChatters);
+    return unique?num(s.returning)/unique*100:null;
+  }
+  return null;
 }
 function latestAutoStream(){
   return (state.streams||[]).find(s=>s&&s.autoTracked)||null;
 }
 function liveAverage(session){
-  const samples=Array.isArray(session?.samples)?session.samples:[];
-  if(!samples.length)return num(session?.currentViewers);
+  const samples=(Array.isArray(session?.samples)?session.samples:[]).filter(sample=>metricAvailable(sample?.viewers));
+  if(!samples.length)return metricAvailable(session?.currentViewers)?num(session.currentViewers):null;
   return sum(samples,s=>s.viewers)/samples.length;
 }
 function liveDuration(session){
-  if(!session?.startedAt)return '—';
+  if(!session?.startedAt)return 'Unavailable';
   const start=new Date(session.startedAt);
   if(Number.isNaN(start.getTime()))return '—';
   return durationLabelFromMinutes((Date.now()-start.getTime())/60000);
@@ -6166,6 +6348,11 @@ function liveDuration(session){
 function reportMetric(label,value,extra=''){
   return `<div class="stream-kpi"><span>${esc(label)}</span><b>${esc(value)}</b>${extra?`<div class="muted" style="margin-top:4px">${esc(extra)}</div>`:''}</div>`;
 }
+function metricAvailable(value){return value!==undefined&&value!==null&&value!==''&&!(typeof value==='number'&&Number.isNaN(value));}
+function metricNumber(value,formatter=fmt){return metricAvailable(value)?formatter(value):'Unavailable';}
+function metricCount(value,prefix=''){return metricAvailable(value)?prefix+fmt(value):'Unavailable';}
+function metricPair(a,b){return metricAvailable(a)||metricAvailable(b)?`${metricCount(a)} / ${metricCount(b)}`:'Unavailable';}
+function optionalNum(value){return String(value??'').trim()===''?null:num(value);}
 function renderStreams(){
   const live=state.liveStreamSession&&typeof state.liveStreamSession==='object'
     ?state.liveStreamSession:null;
@@ -6178,7 +6365,9 @@ function renderStreams(){
     badge.textContent='LIVE';
     badge.className='status s-ready';
     const avg=liveAverage(live);
-    const unique=Object.keys(live.activeChatters||{}).length;
+    const unique=live.activeChatters&&typeof live.activeChatters==='object'
+      ?Object.keys(live.activeChatters).length
+      :null;
     const missing=Array.isArray(status.missingScopes)?status.missingScopes:[];
 
     copy.textContent=status.eventsubConnected
@@ -6196,18 +6385,18 @@ function renderStreams(){
         <span class="pill">${esc(liveDuration(live))}</span>
       </div>
       <div class="stream-kpi-grid">
-        ${reportMetric('Current viewers',fmt(live.currentViewers||0))}
-        ${reportMetric('Peak viewers',fmt(live.peakViewers||0))}
-        ${reportMetric('Avg viewers',num(avg).toFixed(1))}
-        ${reportMetric('Active chatters',fmt(unique))}
-        ${reportMetric('Chat messages',fmt(live.messageCount||0))}
-        ${reportMetric('New follows',`+${fmt(live.follows||0)}`)}
-        ${reportMetric('Connected chatters',fmt(live.currentConnectedChatters||0))}
-        ${reportMetric('Peak connected',fmt(live.peakConnectedChatters||0))}
-        ${reportMetric('Subs / resubs',`${fmt(live.subs||0)} / ${fmt(live.resubs||0)}`)}
-        ${reportMetric('Gifted subs',fmt(live.giftedSubs||0))}
-        ${reportMetric('Bits',fmt(live.bits||0))}
-        ${reportMetric('Redeems',fmt(live.channelPointRedeems||0),live.wheelOfBreadRedeems?`${live.wheelOfBreadRedeems} Wheel of Bread`:'' )}
+        ${reportMetric('Current viewers',metricNumber(live.currentViewers))}
+        ${reportMetric('Peak viewers',metricNumber(live.peakViewers))}
+        ${reportMetric('Avg viewers',metricAvailable(avg)?num(avg).toFixed(1):'Unavailable')}
+        ${reportMetric('Active chatters',metricNumber(unique))}
+        ${reportMetric('Chat messages',metricNumber(live.messageCount))}
+        ${reportMetric('New follows',metricCount(live.follows,'+'))}
+        ${reportMetric('Connected chatters',metricNumber(live.currentConnectedChatters))}
+        ${reportMetric('Peak connected',metricNumber(live.peakConnectedChatters))}
+        ${reportMetric('Subs / resubs',metricPair(live.subs,live.resubs))}
+        ${reportMetric('Gifted subs',metricNumber(live.giftedSubs))}
+        ${reportMetric('Bits',metricNumber(live.bits))}
+        ${reportMetric('Redeems',metricNumber(live.channelPointRedeems),metricAvailable(live.wheelOfBreadRedeems)?`${fmt(live.wheelOfBreadRedeems)} Wheel of Bread`:'' )}
       </div>`;
   }else{
     badge.textContent='Offline';
@@ -6240,12 +6429,12 @@ function renderStreams(){
         ${latest.autoTracked?`<span class="status s-ready">Automatic</span>`:`<span class="status">Manual</span>`}
       </div>
       <div class="stream-kpi-grid">
-        ${reportMetric('Avg viewers',num(latest.avg).toFixed(1))}
-        ${reportMetric('Peak viewers',fmt(latest.peak||0))}
-        ${reportMetric('Unique chatters',fmt(latest.uniqueChatters||0))}
-        ${reportMetric('Returning',fmt(latest.returning||0),`${num(retentionValue(latest)).toFixed(0)}% retention`)}
-        ${reportMetric('New follows',`+${fmt(latest.follows||0)}`)}
-        ${reportMetric('Twitch clips',fmt(latest.clips||0),latest.clipViews?`${fmt(latest.clipViews)} views`:'' )}
+        ${reportMetric('Avg viewers',metricNumber(latest.avg,v=>num(v).toFixed(1)))}
+        ${reportMetric('Peak viewers',metricNumber(latest.peak))}
+        ${reportMetric('Unique chatters',metricNumber(latest.uniqueChatters))}
+        ${reportMetric('Returning',metricNumber(latest.returning),metricAvailable(retentionValue(latest))?`${num(retentionValue(latest)).toFixed(0)}% retention`:'' )}
+        ${reportMetric('New follows',metricCount(latest.follows,'+'))}
+        ${reportMetric('Twitch clips',metricNumber(latest.clips),metricAvailable(latest.clipViews)?`${fmt(latest.clipViews)} views`:'' )}
       </div>
       ${latest.peakMoment?.summary?`<div class="note" style="margin-top:12px"><b>🔥 Peak moment</b><br>${esc(latest.peakMoment.summary)}</div>`:''}`;
   }
@@ -6287,6 +6476,15 @@ function renderStreams(){
 
 let streamLibrarySearch='';
 let streamLibraryFilter='all';
+function connectedSocialPostCount(stream){
+  const candidates=(state.queue||[]).filter(q=>q&&q.status==='Posted');
+  const matches=candidates.filter(q=>{
+    const sameVod=stream.vodUrl&&q.twitchVodUrl&&String(stream.vodUrl)===String(q.twitchVodUrl);
+    const sameTitle=stream.title&&q.twitchVodTitle&&String(stream.title).trim()===String(q.twitchVodTitle).trim();
+    return sameVod||sameTitle;
+  });
+  return matches.length?matches.length:null;
+}
 
 function renderStreamLibrary(){
   const root=document.getElementById('streamLibraryCards');
@@ -6323,14 +6521,18 @@ function renderStreamLibrary(){
 
       <div class="stream-library-metrics">
         ${s.historicalImport?`
-          <div class="stream-mini-metric"><span>VOD views</span><b>${fmt(s.vodViews||0)}</b></div>
-          <div class="stream-mini-metric"><span>Clips</span><b>${fmt(s.clips||0)}</b></div>
-          <div class="stream-mini-metric"><span>Clip views</span><b>${fmt(s.clipViews||0)}</b></div>
+          <div class="stream-mini-metric"><span>VOD views</span><b>${metricNumber(s.vodViews)}</b></div>
+          <div class="stream-mini-metric"><span>Clips</span><b>${metricNumber(s.clips)}</b></div>
+          <div class="stream-mini-metric"><span>Clip views</span><b>${metricNumber(s.clipViews)}</b></div>
           <div class="stream-mini-metric"><span>Duration</span><b>${esc(streamDurationLabel(s))}</b></div>`:`
-          <div class="stream-mini-metric"><span>Avg</span><b>${s.avg==null?'—':num(s.avg).toFixed(1)}</b></div>
-          <div class="stream-mini-metric"><span>Peak</span><b>${s.peak==null?'—':fmt(s.peak)}</b></div>
-          <div class="stream-mini-metric"><span>Chatters</span><b>${s.uniqueChatters==null?'—':fmt(s.uniqueChatters)}</b></div>
-          <div class="stream-mini-metric"><span>Follows</span><b>${s.follows==null?'—':'+'+fmt(s.follows)}</b></div>`}
+          <div class="stream-mini-metric"><span>Avg viewers</span><b>${metricNumber(s.avg,v=>num(v).toFixed(1))}</b></div>
+          <div class="stream-mini-metric"><span>Peak viewers</span><b>${metricNumber(s.peak)}</b></div>
+          <div class="stream-mini-metric"><span>Chatters</span><b>${metricNumber(s.uniqueChatters)}</b></div>
+          <div class="stream-mini-metric"><span>Returning</span><b>${metricNumber(s.returning)}</b></div>
+          <div class="stream-mini-metric"><span>New follows</span><b>${metricCount(s.follows,'+')}</b></div>
+          <div class="stream-mini-metric"><span>Generated clips</span><b>${metricNumber(s.clips)}</b></div>
+          <div class="stream-mini-metric"><span>Clip views</span><b>${metricNumber(s.clipViews)}</b></div>
+          <div class="stream-mini-metric"><span>Social posts</span><b>${metricNumber(connectedSocialPostCount(s))}</b></div>`}
       </div>
 
       ${s.peakMoment?.summary?`<div class="muted" style="margin-top:10px">🔥 ${esc(s.peakMoment.summary)}</div>`:''}
@@ -6349,7 +6551,7 @@ function renderStreamLibrary(){
     statusRoot.textContent=hs.error
       ?`History import error: ${hs.error}`
       :hs.lastSyncAt
-        ?`Historical Twitch sync: ${hs.availableVods||0} currently available VOD(s) · last checked ${streamDateLabel({startedAt:hs.lastSyncAt})}`
+        ?`Historical Twitch sync: ${metricNumber(hs.availableVods)} currently available VOD(s) · last checked ${streamDateLabel({startedAt:hs.lastSyncAt})}`
         :'Older Twitch VODs have not been imported yet.';
   }
 
@@ -6404,16 +6606,16 @@ function openStreamReport(id){
         <div>This VOD existed before Nappa Bot was collecting live telemetry. Twitch can give us the VOD metadata and current VOD/clip performance, but it cannot reconstruct old average/peak viewers, chatters, follows or EventSub events.</div>
       </section>
       <div class="report-metric-grid">
-        ${metricBox('VOD views',fmt(s.vodViews||0))}
+        ${metricBox('VOD views',metricNumber(s.vodViews))}
         ${metricBox('Duration',streamDurationLabel(s))}
-        ${metricBox('Twitch clips',fmt(s.clips||0))}
-        ${metricBox('Clip views',fmt(s.clipViews||0))}
+        ${metricBox('Twitch clips',metricNumber(s.clips))}
+        ${metricBox('Clip views',metricNumber(s.clipViews))}
         ${metricBox('Avg viewers','—','not historically available')}
         ${metricBox('Peak viewers','—','not historically available')}
       </div>
       <div class="report-two-col">
         <section class="report-section"><h3>Source VOD</h3>${s.vodUrl?`<a class="btn secondary" href="${esc(s.vodUrl)}" target="_blank" rel="noopener">Open Twitch VOD</a>`:'<div class="empty">Twitch VOD URL unavailable.</div>'}</section>
-        <section class="report-section"><h3>Top clip</h3>${topClip?`<div class="note"><b>${esc(topClip.title||'Untitled clip')}</b><br>${fmt(topClip.views||0)} views<div style="margin-top:8px"><a class="btn secondary" href="${esc(topClip.url||'#')}" target="_blank" rel="noopener">Open clip</a></div></div>`:'<div class="empty">No synced Twitch clips matched this VOD.</div>'}</section>
+        <section class="report-section"><h3>Top clip</h3>${topClip?`<div class="note"><b>${esc(topClip.title||'Untitled clip')}</b><br>${metricNumber(topClip.views)} views<div style="margin-top:8px"><a class="btn secondary" href="${esc(topClip.url||'#')}" target="_blank" rel="noopener">Open clip</a></div></div>`:'<div class="empty">No synced Twitch clips matched this VOD.</div>'}</section>
       </div>`;
     modal.classList.add('open');
     modal.setAttribute('aria-hidden','false');
@@ -6423,26 +6625,26 @@ function openStreamReport(id){
 
   document.getElementById('streamReportBody').innerHTML=`
     <div class="report-metric-grid">
-      ${metricBox('Avg viewers',num(s.avg).toFixed(1))}
-      ${metricBox('Peak viewers',fmt(s.peak||0))}
-      ${metricBox('Unique chatters',fmt(s.uniqueChatters||0))}
-      ${metricBox('Returning',fmt(s.returning||0),`${num(retentionValue(s)).toFixed(1)}% retention`)}
-      ${metricBox('New chatters',fmt(s.newChatters||0))}
-      ${metricBox('Chat messages',fmt(s.chatMessages||0),`${num(s.messagesPerHour).toFixed(1)}/hour`)}
-      ${metricBox('New follows',`+${fmt(s.follows||0)}`,`${num(s.followerConversion).toFixed(1)}% conversion`)}
-      ${metricBox('Peak connected',fmt(s.peakConnectedChatters||0))}
-      ${metricBox('Subs',fmt(s.subs||0))}
-      ${metricBox('Resubs',fmt(s.resubs||0))}
-      ${metricBox('Gifted subs',fmt(s.giftedSubs||0))}
-      ${metricBox('Bits',fmt(s.bits||0))}
-      ${metricBox('Raids in',fmt(s.raidsIn||0),s.raidViewersIn?`${fmt(s.raidViewersIn)} viewers`:'' )}
-      ${metricBox('Redeems',fmt(s.channelPointRedeems||0),s.wheelOfBreadRedeems?`${fmt(s.wheelOfBreadRedeems)} Wheel of Bread`:'' )}
-      ${metricBox('Twitch clips',fmt(s.clips||0),s.clipViews?`${fmt(s.clipViews)} views`:'' )}
-      ${metricBox('Engagement score',s.autoTracked?`${fmt(s.streamScore||0)}/100`:'—')}
-      ${metricBox('Polls',fmt(s.polls||0))}
-      ${metricBox('Predictions',fmt(s.predictions||0))}
-      ${metricBox('Hype trains',fmt(s.hypeTrains||0),s.hypeTrainMaxLevel?`max level ${s.hypeTrainMaxLevel}`:'' )}
-      ${metricBox('First chat',s.timeToFirstChatMinutes==null?'—':`${num(s.timeToFirstChatMinutes).toFixed(1)}m`)}
+      ${metricBox('Avg viewers',metricNumber(s.avg,v=>num(v).toFixed(1)))}
+      ${metricBox('Peak viewers',metricNumber(s.peak))}
+      ${metricBox('Unique chatters',metricNumber(s.uniqueChatters))}
+      ${metricBox('Returning',metricNumber(s.returning),metricAvailable(retentionValue(s))?`${num(retentionValue(s)).toFixed(1)}% retention`:'' )}
+      ${metricBox('New chatters',metricNumber(s.newChatters))}
+      ${metricBox('Chat messages',metricNumber(s.chatMessages),metricAvailable(s.messagesPerHour)?`${num(s.messagesPerHour).toFixed(1)}/hour`:'' )}
+      ${metricBox('New follows',metricCount(s.follows,'+'),metricAvailable(s.followerConversion)?`${num(s.followerConversion).toFixed(1)}% conversion`:'' )}
+      ${metricBox('Peak connected',metricNumber(s.peakConnectedChatters))}
+      ${metricBox('Subs',metricNumber(s.subs))}
+      ${metricBox('Resubs',metricNumber(s.resubs))}
+      ${metricBox('Gifted subs',metricNumber(s.giftedSubs))}
+      ${metricBox('Bits',metricNumber(s.bits))}
+      ${metricBox('Raids in',metricNumber(s.raidsIn),metricAvailable(s.raidViewersIn)?`${fmt(s.raidViewersIn)} viewers`:'' )}
+      ${metricBox('Redeems',metricNumber(s.channelPointRedeems),metricAvailable(s.wheelOfBreadRedeems)?`${fmt(s.wheelOfBreadRedeems)} Wheel of Bread`:'' )}
+      ${metricBox('Twitch clips',metricNumber(s.clips),metricAvailable(s.clipViews)?`${fmt(s.clipViews)} views`:'' )}
+      ${metricBox('Engagement score',s.autoTracked&&metricAvailable(s.streamScore)?`${fmt(s.streamScore)}/100`:'Unavailable')}
+      ${metricBox('Polls',metricNumber(s.polls))}
+      ${metricBox('Predictions',metricNumber(s.predictions))}
+      ${metricBox('Hype trains',metricNumber(s.hypeTrains),metricAvailable(s.hypeTrainMaxLevel)?`max level ${s.hypeTrainMaxLevel}`:'' )}
+      ${metricBox('First chat',metricAvailable(s.timeToFirstChatMinutes)?`${num(s.timeToFirstChatMinutes).toFixed(1)}m`:'Unavailable')}
     </div>
 
     ${s.peakMoment?.summary?`
@@ -6469,10 +6671,10 @@ function openStreamReport(id){
         ${topClip?`
           <div class="note">
             <b>Top Twitch clip</b><br>
-            ${esc(topClip.title||'Untitled clip')} · ${fmt(topClip.views||0)} views
+            ${esc(topClip.title||'Untitled clip')} · ${metricNumber(topClip.views)} views
             ${topClip.url?`<div style="margin-top:9px"><a class="btn secondary" href="${esc(topClip.url)}" target="_blank" rel="noopener">Open clip</a></div>`:''}
           </div>`:'<div class="empty">No Twitch clips were attributed to this stream.</div>'}
-        <div class="muted" style="margin-top:10px">${fmt(s.clips||0)} clips · ${fmt(s.clipViews||0)} combined current Twitch views</div>
+        <div class="muted" style="margin-top:10px">${metricNumber(s.clips)} clips · ${metricNumber(s.clipViews)} combined current Twitch views</div>
       </section>
 
       <section class="report-section">
@@ -6562,7 +6764,11 @@ function renderClips(){
     tr.innerHTML=`<td><b>${esc(c.title)}</b><div class="muted">${c.length?c.length+' sec':''}</div></td><td>${esc(c.format)}</td><td>${badge(c.status)}</td><td>${c.score}/10</td><td>${esc(c.hook)}</td><td>${esc(c.source)}</td><td>${fmt(c.views)}</td><td>${fmt(c.follows)}</td><td>${esc(c.notes)}</td><td><div class="row"><button class="btn secondary" data-cycle="${c.id}">Status</button><button class="btn danger" data-del-clip="${c.id}" aria-label="Delete clip ${esc(c.title)}">×</button></div></td>`;
     tb.appendChild(tr);
   });
-  tb.querySelectorAll('[data-del-clip]').forEach(btn=>btn.addEventListener('click',()=>{state.clips=state.clips.filter(x=>x.id!=btn.dataset.delClip);save()}));
+  tb.querySelectorAll('[data-del-clip]').forEach(btn=>btn.addEventListener('click',()=>{
+    const clip=state.clips.find(x=>x.id==btn.dataset.delClip);
+    if(!clip||!confirm(`Delete the clip log entry “${clip.title||'Untitled'}”?`))return;
+    btn.disabled=true;state.clips=state.clips.filter(x=>x.id!=btn.dataset.delClip);save();notifyUser('Clip log entry deleted.','good');
+  }));
   tb.querySelectorAll('[data-cycle]').forEach(btn=>btn.addEventListener('click',()=>{
     const c=state.clips.find(x=>x.id==btn.dataset.cycle);if(!c)return;
     const order=['Idea','Editing','Ready','Posted','Skip'];c.status=order[(order.indexOf(c.status)+1)%order.length];save();
@@ -7589,10 +7795,11 @@ document.getElementById('addQueue').addEventListener('click',async()=>{
   if(!title){alert('Add a clip name first.');return}
   if(!platforms.length){alert('Choose at least one platform.');return}
 
-  // Advisor sessions are read-only: an uploaded file would vanish on the
-  // next sync. Block it clearly instead of losing someone's upload.
-  if(file&&!isOwner()){
-    showUploadStatus('Only the Owner account can upload clip videos. Advisors can still add posts without a video.','error');
+  // Advisors are read-only. Block the whole mutating queue workflow instead
+  // of allowing a no-video post to appear locally and disappear on refresh.
+  if(!isOwner()){
+    showUploadStatus('Advisor access is read-only. Ask the Owner to add or edit queue posts.','error');
+    notifyUser('Advisor access is read-only.','error');
     return;
   }
 
@@ -7689,12 +7896,17 @@ document.getElementById('addQueue').addEventListener('click',async()=>{
         return;
       }
     }else{
-      showUploadStatus(
-        twitchSource
-          ? 'Twitch clip added. Nappa Bot will create a fresh download link when the reminder is sent.'
-          : 'Post added. No video was attached.',
-        'good'
-      );
+      const saved=await flushCloudSave();
+      if(saved.ok){
+        showUploadStatus(
+          twitchSource
+            ? 'Twitch clip added and synced. Nappa Bot will create a fresh download link when the reminder is sent.'
+            : 'Post added and synced. No video was attached.',
+          'good'
+        );
+      }else{
+        showUploadStatus('Post saved on this device, but Supabase did not confirm it. The sync pill will retry automatically.','error');
+      }
     }
   }catch(err){
     // A user-cancelled Google authorization is not an error worth a scary
@@ -7761,12 +7973,19 @@ document.getElementById('qUploadCancel').addEventListener('click',()=>{
   if(gdriveActiveXhr){try{gdriveActiveXhr.abort()}catch(e){}}
 });
 
-document.getElementById('requestTwitchRefresh').addEventListener('click',()=>{
+document.getElementById('requestTwitchRefresh').addEventListener('click',async()=>{
+  const btn=document.getElementById('requestTwitchRefresh');
+  if(twitchRefreshBusy)return;
+  twitchRefreshBusy=true;btn.disabled=true;btn.textContent='Requesting…';
   state.twitchRefreshRequestedAt=new Date().toISOString();
   save();
-  const btn=document.getElementById('requestTwitchRefresh');
-  btn.textContent='Refresh requested…';
-  setTimeout(()=>{btn.textContent='↻ Refresh clips'},3000);
+  const result=await flushCloudSave();
+  if(result.ok){
+    btn.textContent='Refresh queued ✓';notifyUser('Twitch clip refresh queued for Nappa Bot.','good');
+  }else{
+    btn.textContent='Retry refresh';notifyUser('Twitch refresh was kept locally but not synced. Try again.','error');
+  }
+  setTimeout(()=>{twitchRefreshBusy=false;btn.disabled=false;btn.textContent='↻ Refresh clips'},3000);
 });
 
 function formatTwitchDate(value){
@@ -7774,6 +7993,7 @@ function formatTwitchDate(value){
   const d=new Date(value);
   if(Number.isNaN(d.getTime()))return value;
   return d.toLocaleString([],{
+    timeZone:APP_TIME_ZONE,
     day:'2-digit',month:'short',year:'numeric',
     hour:'2-digit',minute:'2-digit'
   });
@@ -8002,7 +8222,42 @@ function contentOverlap(title,clip){
 function addCandidate(list,title,angle,reason,clip,{specific=false}={}){
   const clean=cleanPackagingTitle(title,96);
   if(!clean||clean.split(/\s+/).length<3)return;
-  list.push({title:clean,angle,reason,specific});
+  // Prefixes are context only. The selectable unit is always a complete
+  // title option; keeping this explicit prevents a prefix string from
+  // entering selection/copy/queue state by accident.
+  list.push({title:clean,angle,reason,specific,kind:'complete',isPrefix:false});
+}
+function stableTitleHash(value){
+  let hash=2166136261;
+  for(const ch of String(value||'')){
+    hash^=ch.codePointAt(0);
+    hash=Math.imul(hash,16777619);
+  }
+  return (hash>>>0).toString(36);
+}
+function titleExactKey(value){
+  return String(value??'').normalize('NFKC').replace(/\s+/g,' ').trim().toLocaleLowerCase();
+}
+function stableTitleOptionId(clip,option){
+  const clipId=String(clip?.id??'unknown');
+  const identity=[clipId,option.kind||'complete',option.angle||'',option.originalTitle||option.title||''].join('\u001f');
+  return `nappa-title-${stableTitleHash(identity)}`;
+}
+function assignStableTitleIds(clip,options){
+  const seen=new Map();
+  return options.map(option=>{
+    const next={...option,kind:'complete',isPrefix:false,originalTitle:option.originalTitle||option.title};
+    const base=stableTitleOptionId(clip,next);
+    const occurrence=seen.get(base)||0;seen.set(base,occurrence+1);
+    next.id=occurrence?`${base}-${occurrence+1}`:base;
+    return next;
+  });
+}
+function packageOptionForChoice(pack,choice){
+  const raw=String(choice??'');
+  return (pack.options||[]).find(option=>option.id===raw)
+    || (/^\d+$/.test(raw)?pack.options?.[Number(raw)]:null)
+    || null;
 }
 function storyCallbackCandidates(clip,list){
   const premise=vodPremise(clip);
@@ -8248,10 +8503,10 @@ function packagingTitleScore(option,clip){
   return score;
 }
 function dedupeOptions(options,clip){
-  const rejected=new Set((clip.packageRejectedTitles||[]).map(titleKey));
+  const rejected=new Set((clip.packageRejectedTitles||[]).map(titleExactKey));
   const seen=new Set();
   return options.filter(option=>{
-    const key=titleKey(option.title);
+    const key=titleExactKey(option.title);
     if(!key||seen.has(key)||rejected.has(key))return false;
     seen.add(key);
     return true;
@@ -8265,8 +8520,13 @@ function rotateArray(arr,amount){
 function buildNappaPackage(clip){
   const mode=clip.packageTone||'balanced';
   const variant=Math.max(0,Number(clip.packageVariant||0));
-  const selected=Math.max(0,Number(clip.packageSelectedIndex||0));
-  const selectedTitleKey=titleKey(clip.packageSelectedTitle||'');
+  const legacySelected=Math.max(0,Number(clip.packageSelectedIndex||0));
+  const selectedTitleId=String(clip.packageSelectedTitleId||'');
+  const selectedTitle=String(clip.packageSelectedTitle||'');
+  const hadSelection=Boolean(
+    selectedTitleId||selectedTitle||clip.packageSelectionState==='unselected'||
+    clip.packageSelectedIndex!==undefined
+  );
   const options=[];
 
   clipTitleCandidates(clip,options);
@@ -8299,30 +8559,51 @@ function buildNappaPackage(clip){
   }
 
   unique=dedupeOptions(unique,clip).slice(0,6);
+  unique=assignStableTitleIds(clip,unique);
+
+  // Apply per-option edits after IDs are assigned. Editing one option is
+  // therefore isolated and does not change the identity of its neighbours.
+  const edits=clip.packageTitleEdits&&typeof clip.packageTitleEdits==='object'?clip.packageTitleEdits:{};
+  unique=unique.map(option=>{
+    const edited=typeof edits[option.id]==='string'?cleanPackagingTitle(edits[option.id],96):'';
+    return edited?{...option,title:edited}:option;
+  });
 
   const titles=unique.map(o=>o.title);
-  let resolvedSelectedIndex=selectedTitleKey
-    ? titles.findIndex(title=>titleKey(title)===selectedTitleKey)
-    : -1;
-  if(resolvedSelectedIndex<0){
-    resolvedSelectedIndex=Math.min(selected,Math.max(0,titles.length-1));
+  let resolvedSelectedIndex=-1;
+  if(selectedTitleId){
+    resolvedSelectedIndex=unique.findIndex(option=>option.id===selectedTitleId);
   }
+  if(resolvedSelectedIndex<0&&selectedTitle){
+    resolvedSelectedIndex=unique.findIndex(option=>titleExactKey(option.title)===titleExactKey(selectedTitle));
+  }
+  // Old records only had an index. Migrate that index once, but never use an
+  // old index after a real title ID/text selection has gone missing.
+  if(resolvedSelectedIndex<0&&!selectedTitleId&&!selectedTitle&&!clip.packageSelectionState){
+    resolvedSelectedIndex=unique.length?Math.min(legacySelected,unique.length-1):-1;
+  }
+  const selectedOption=resolvedSelectedIndex>=0?unique[resolvedSelectedIndex]:null;
   return {
     titles,
     options:unique,
     selectedIndex:resolvedSelectedIndex,
+    selectedTitleId:selectedOption?.id||'',
+    selectedTitle:selectedOption?.title||'',
+    prefixes:[],
     caption:packageCaption(clip,mode),
-    tags:packageTags(clip),
+    tags:packageTags(clip,mode),
     tone:mode,
     history:clipHistoryForGame(clip),
-    richContext:hasRichClipContext(clip)
+    richContext:hasRichClipContext(clip),
+    hasSelection:Boolean(selectedOption),
+    hadSelection
   };
 }
 function currentNappaPackageChoice(clip){
   const pack=buildNappaPackage(clip);
   return {
     ...pack,
-    title:pack.titles[pack.selectedIndex]||pack.titles[0]||clip.title||''
+    title:pack.hasSelection?pack.selectedTitle:''
   };
 }
 function persistClipPackagePrefs(clip){
@@ -8343,6 +8624,7 @@ async function copyTextSafe(text){
 async function copyNappaField(id,field,button){
   const clip=state.twitchClips.find(c=>String(c.id)===String(id));if(!clip)return;
   const pack=currentNappaPackageChoice(clip);
+  if((field==='title'||field==='all')&&!pack.title){notifyUser('Select a complete generated title before copying it.','error');return}
   let text='';
   if(field==='title')text=pack.title;
   if(field==='caption')text=pack.caption;
@@ -8355,29 +8637,53 @@ async function copyNappaField(id,field,button){
     setTimeout(()=>button.textContent=old,1200);
   }
 }
-function selectNappaTitle(id,index){
+function selectNappaTitle(id,choice){
   const clip=state.twitchClips.find(c=>String(c.id)===String(id));if(!clip)return;
   const pack=buildNappaPackage(clip);
-  const selectedIndex=Math.max(0,Number(index||0));
-  const title=pack.titles[selectedIndex]||'';
-  if(!title)return;
+  const option=packageOptionForChoice(pack,choice);
+  if(!option||option.kind!=='complete'||option.isPrefix)return;
+  const selectedIndex=pack.options.findIndex(item=>item.id===option.id);
   clip.packageSelectedIndex=selectedIndex;
-  clip.packageSelectedTitle=title;
+  clip.packageSelectedTitle=option.title;
+  clip.packageSelectedTitleId=option.id;
+  clip.packageSelectionState='selected';
   persistClipPackagePrefs(clip);
   renderTwitchClips();
 }
-function rejectNappaTitle(id,index){
+function editNappaTitle(id,choice){
   const clip=state.twitchClips.find(c=>String(c.id)===String(id));if(!clip)return;
   const pack=buildNappaPackage(clip);
-  const title=pack.titles[Math.max(0,Number(index||0))];
-  if(!title)return;
+  const option=packageOptionForChoice(pack,choice);
+  if(!option||option.kind!=='complete'||option.isPrefix)return;
+  const edited=prompt('Edit this complete title. The other generated titles will not change.',option.title);
+  if(edited===null)return;
+  const value=cleanPackagingTitle(edited,96);
+  if(!value||value.split(/\s+/).length<3){notifyUser('A title needs at least three words. Nothing changed.','error');return}
+  if(!clip.packageTitleEdits||typeof clip.packageTitleEdits!=='object')clip.packageTitleEdits={};
+  clip.packageTitleEdits[option.id]=value;
+  clip.packageSelectedIndex=pack.options.findIndex(item=>item.id===option.id);
+  clip.packageSelectedTitle=value;
+  clip.packageSelectedTitleId=option.id;
+  clip.packageSelectionState='selected';
+  persistClipPackagePrefs(clip);
+  renderTwitchClips();
+}
+function rejectNappaTitle(id,choice){
+  const clip=state.twitchClips.find(c=>String(c.id)===String(id));if(!clip)return;
+  const pack=buildNappaPackage(clip);
+  const option=packageOptionForChoice(pack,choice);
+  if(!option||option.kind!=='complete'||option.isPrefix)return;
   if(!Array.isArray(clip.packageRejectedTitles))clip.packageRejectedTitles=[];
-  if(!clip.packageRejectedTitles.some(t=>titleKey(t)===titleKey(title))){
-    clip.packageRejectedTitles.push(title);
+  if(!clip.packageRejectedTitles.some(t=>titleExactKey(t)===titleExactKey(option.title))){
+    clip.packageRejectedTitles.push(option.title);
   }
   clip.packageVariant=Number(clip.packageVariant||0)+1;
-  clip.packageSelectedIndex=0;
+  // Do not silently point at the first regenerated title. The next render
+  // starts with no selection unless the saved selected ID still exists.
+  clip.packageSelectedIndex=-1;
   clip.packageSelectedTitle='';
+  clip.packageSelectedTitleId='';
+  clip.packageSelectionState='unselected';
   persistClipPackagePrefs(clip);
   renderTwitchClips();
 }
@@ -8385,23 +8691,25 @@ function applyNappaContext(id,value){
   const clip=state.twitchClips.find(c=>String(c.id)===String(id));if(!clip)return;
   clip.packageUserContext=String(value||'').trim();
   clip.packageVariant=Number(clip.packageVariant||0)+1;
-  clip.packageSelectedIndex=0;
+  clip.packageSelectionState='unselected';
+  clip.packageSelectedIndex=-1;
   clip.packageSelectedTitle='';
+  clip.packageSelectedTitleId='';
   persistClipPackagePrefs(clip);
   renderTwitchClips();
 }
 function changeNappaPackage(id,action){
   const clip=state.twitchClips.find(c=>String(c.id)===String(id));if(!clip)return;
   const modes=['balanced','words','context','unhinged','deadpan','short','bread'];
-  if(action==='new'){
+  if(action==='new'||modes.includes(action)){
+    if(modes.includes(action))clip.packageTone=action;
     clip.packageVariant=Number(clip.packageVariant||0)+1;
-    clip.packageSelectedIndex=0;
-  clip.packageSelectedTitle='';
-  }else if(modes.includes(action)){
-    clip.packageTone=action;
-    clip.packageVariant=Number(clip.packageVariant||0)+1;
-    clip.packageSelectedIndex=0;
-  clip.packageSelectedTitle='';
+    // Preserve the selected stable ID if that exact complete title remains;
+    // otherwise show the regenerated list with no misleading selection.
+    clip.packageSelectionState=clip.packageSelectedTitleId?'selected':'unselected';
+    if(!clip.packageSelectedTitleId){
+      clip.packageSelectedIndex=-1;clip.packageSelectedTitle='';
+    }
   }
   persistClipPackagePrefs(clip);
   renderTwitchClips();
@@ -8425,7 +8733,11 @@ function selectTwitchClipForQueue(id,{packaged=true}={}){
   if(!clip)return;
 
   const pack=currentNappaPackageChoice(clip);
-  const chosenTitle=pack.title||clip.title||'';
+  if(packaged&&!pack.title){
+    notifyUser('Select a complete generated title before adding this Twitch clip to the queue.','error');
+    return;
+  }
+  const chosenTitle=packaged?pack.title:(clip.title||'');
 
   selectedTwitchClipId=String(clip.id);
   document.getElementById('qTitle').value=clip.title||'Twitch clip';
@@ -8485,9 +8797,21 @@ function renderTwitchClips(){
     card.className='twitch-card';
 
     const pack=currentNappaPackageChoice(c);
-    const selectedOption=pack.options?.[pack.selectedIndex]||{
-      title:pack.title,angle:'Selected',reason:''
+    const selectedOption=(pack.options||[]).find(option=>option.id===pack.selectedTitleId)||{
+      id:'',title:'No complete title selected',angle:'Selection required',reason:'Choose one of the generated complete titles above.'
     };
+    const allOptions=pack.options||[];
+    const filterChoices=[...new Set(allOptions.map(option=>String(option.angle||'Complete title')).filter(Boolean))];
+    const optionFilter=String(c.packageOptionFilter||'all');
+    const optionSort=String(c.packageOptionSort||'recommended');
+    let visibleOptions=allOptions
+      .map((option,index)=>({option,index}))
+      .filter(({option})=>optionFilter==='all'||String(option.angle||'Complete title')===optionFilter);
+    if(optionSort==='shortest')visibleOptions.sort((a,b)=>a.option.title.length-b.option.title.length||a.index-b.index);
+    if(optionSort==='az')visibleOptions.sort((a,b)=>a.option.title.localeCompare(b.option.title)||a.index-b.index);
+    const selectedHidden=Boolean(pack.selectedTitleId&&!visibleOptions.some(({option})=>option.id===pack.selectedTitleId));
+    const filterOptions=`<option value="all" ${optionFilter==='all'?'selected':''}>All angles</option>${filterChoices.map(angle=>`<option value="${esc(angle)}" ${optionFilter===angle?'selected':''}>${esc(angle)}</option>`).join('')}`;
+    const sortOptions=`<option value="recommended" ${optionSort==='recommended'?'selected':''}>Recommended</option><option value="shortest" ${optionSort==='shortest'?'selected':''}>Shortest first</option><option value="az" ${optionSort==='az'?'selected':''}>A to Z</option>`;
     const hasHistory=pack.history.total>0;
     const contextLabel=pack.richContext
       ? 'Transcript / moment context ready'
@@ -8499,12 +8823,13 @@ function renderTwitchClips(){
       ? `<img class="twitch-thumb" src="${esc(c.thumbnailUrl)}" alt="${esc(c.title||'Twitch clip preview')}">`
       : `<div class="twitch-preview-empty">NO PREVIEW</div>`;
 
-    const options=(pack.options||[]).map((option,index)=>`
-      <button class="nappa-title-option ${index===pack.selectedIndex?'selected':''}"
-              data-pack-select="${index}" data-pack-id="${esc(c.id)}">
+    const options=visibleOptions.map(({option},index)=>`
+      <button type="button" class="nappa-title-option ${option.id===pack.selectedTitleId?'selected':''}"
+              aria-pressed="${option.id===pack.selectedTitleId?'true':'false'}"
+              data-pack-select-id="${esc(option.id)}" data-pack-select="${esc(option.id)}" data-pack-id="${esc(c.id)}">
         <span class="nappa-title-angle">
-          <span>${esc(option.angle||'Angle')}</span>
-          <span>${index===pack.selectedIndex?'SELECTED':String(index+1).padStart(2,'0')}</span>
+          <span>${esc(option.angle||'Complete title')}</span>
+          <span>${option.id===pack.selectedTitleId?'SELECTED':String(index+1).padStart(2,'0')}</span>
         </span>
         <span class="nappa-title-copy">${esc(option.title)}</span>
         ${option.reason?`<span class="nappa-title-reason">${esc(option.reason)}</span>`:''}
@@ -8516,8 +8841,8 @@ function renderTwitchClips(){
         <div class="twitch-preview-frame">
           ${preview}
           <div class="twitch-preview-overlay">
-            <span>👁 ${fmt(c.viewCount||0)}</span>
-            <span>${num(c.duration).toFixed(1)}s</span>
+            <span>👁 ${metricNumber(c.viewCount)}</span>
+            <span>${metricAvailable(c.duration)?num(c.duration).toFixed(1)+'s':'Unavailable'}</span>
           </div>
         </div>
 
@@ -8578,13 +8903,19 @@ function renderTwitchClips(){
               </div>
             </div>
 
-            <div class="nappa-title-list">${options}</div>
+            <div class="nappa-title-view-controls" aria-label="Title list controls">
+              <label>Filter <select data-pack-filter="${esc(c.id)}" aria-label="Filter generated titles">${filterOptions}</select></label>
+              <label>Sort <select data-pack-sort="${esc(c.id)}" aria-label="Sort generated titles">${sortOptions}</select></label>
+              <span class="nappa-pack-count">${visibleOptions.length} of ${allOptions.length} complete titles</span>
+            </div>
+            ${selectedHidden?`<div class="nappa-title-filter-note" role="status">Your selected title is hidden by this filter, but remains selected for copy, edit, regeneration and queue actions.</div>`:''}
+            <div class="nappa-title-list">${options||'<div class="empty">No complete titles match this filter.</div>'}</div>
 
             <div class="nappa-selected-package">
               <div class="nappa-selected-main">
                 <div class="nappa-selected-label">${esc(selectedOption.angle||'Selected package')}</div>
-                <div class="nappa-pack-suggestion-title">${esc(pack.title)}</div>
-                <div class="nappa-pack-caption">${esc(pack.caption)}</div>
+                <div class="nappa-pack-suggestion-title">${esc(pack.title||'No complete title selected')}</div>
+                <div class="nappa-pack-caption">${esc(pack.hasSelection?pack.caption:'Choose a complete title above before copying or adding this clip to the queue.')}</div>
                 <div class="nappa-pack-tags">${esc(pack.tags)}</div>
               </div>
               <div class="nappa-selected-meta">
@@ -8594,7 +8925,8 @@ function renderTwitchClips(){
                   <button class="btn secondary" data-copy-pack="caption" data-pack-id="${esc(c.id)}">Copy caption</button>
                   <button class="btn secondary" data-copy-pack="tags" data-pack-id="${esc(c.id)}">Copy tags</button>
                   <button class="btn secondary" data-copy-pack="all" data-pack-id="${esc(c.id)}">Copy all</button>
-                  <button class="btn secondary nappa-reject" data-pack-reject="${pack.selectedIndex}" data-pack-id="${esc(c.id)}">Not this vibe</button>
+                  ${pack.hasSelection?`<button class="btn secondary" data-pack-edit="${esc(selectedOption.id)}" data-pack-id="${esc(c.id)}">Edit title</button>`:''}
+                  ${pack.hasSelection?`<button class="btn secondary nappa-reject" data-pack-reject-id="${esc(selectedOption.id)}" data-pack-reject="${esc(selectedOption.id)}" data-pack-id="${esc(c.id)}">Not this vibe</button>`:''}
                 </div>
               </div>
             </div>
@@ -8630,14 +8962,29 @@ function renderTwitchClips(){
     root.appendChild(card);
   });
 
+  root.querySelectorAll('[data-pack-filter]').forEach(select=>select.addEventListener('change',()=>{
+    const clip=state.twitchClips.find(item=>String(item.id)===String(select.dataset.packFilter));
+    if(!clip)return;
+    clip.packageOptionFilter=select.value||'all';
+    persistClipPackagePrefs(clip);renderTwitchClips();
+  }));
+  root.querySelectorAll('[data-pack-sort]').forEach(select=>select.addEventListener('change',()=>{
+    const clip=state.twitchClips.find(item=>String(item.id)===String(select.dataset.packSort));
+    if(!clip)return;
+    clip.packageOptionSort=select.value||'recommended';
+    persistClipPackagePrefs(clip);renderTwitchClips();
+  }));
   root.querySelectorAll('[data-pack-action]').forEach(btn=>btn.addEventListener('click',()=>{
     changeNappaPackage(btn.dataset.packId,btn.dataset.packAction);
   }));
-  root.querySelectorAll('[data-pack-select]').forEach(btn=>btn.addEventListener('click',()=>{
-    selectNappaTitle(btn.dataset.packId,btn.dataset.packSelect);
+  root.querySelectorAll('[data-pack-select-id]').forEach(btn=>btn.addEventListener('click',()=>{
+    selectNappaTitle(btn.dataset.packId,btn.dataset.packSelectId);
   }));
-  root.querySelectorAll('[data-pack-reject]').forEach(btn=>btn.addEventListener('click',()=>{
-    rejectNappaTitle(btn.dataset.packId,btn.dataset.packReject);
+  root.querySelectorAll('[data-pack-edit]').forEach(btn=>btn.addEventListener('click',()=>{
+    editNappaTitle(btn.dataset.packId,btn.dataset.packEdit);
+  }));
+  root.querySelectorAll('[data-pack-reject-id]').forEach(btn=>btn.addEventListener('click',()=>{
+    rejectNappaTitle(btn.dataset.packId,btn.dataset.packRejectId);
   }));
   root.querySelectorAll('[data-copy-pack]').forEach(btn=>btn.addEventListener('click',()=>{
     copyNappaField(btn.dataset.packId,btn.dataset.copyPack,btn);
@@ -8716,7 +9063,7 @@ function renderQueue(){
       ${q.twitchClipTitle?`<p class="muted"><b>Twitch clip title:</b> ${esc(q.twitchClipTitle)}</p>`:''}
       ${q.twitchVodTitle?`<p class="muted"><b>Source VOD title:</b> ${esc(q.twitchVodTitle)}</p>`:''}
       ${q.note?`<p class="muted"><b>Note:</b> ${esc(q.note)}</p>`:''}
-      ${(()=>{const y=socialPlatformRecord(q,'youtube'),t=socialPlatformRecord(q,'tiktok'),i=socialPlatformRecord(q,'instagram');const rows=[];if(y)rows.push(`YouTube: ${fmt(y.views||0)} views · ${fmt(y.likes||0)} likes`);if(t)rows.push(`TikTok: ${fmt(t.views||0)} views · ${fmt(t.likes||0)} likes`);if(i)rows.push(`Instagram: ${fmt(i.views||0)} views · ${fmt(i.likes||0)} likes`);return rows.length?`<div class="note" style="margin-top:9px"><b>Automatic post analytics</b><br>${rows.join(' · ')}</div>`:''})()}
+      ${(()=>{const y=socialPlatformRecord(q,'youtube'),t=socialPlatformRecord(q,'tiktok'),i=socialPlatformRecord(q,'instagram');const rows=[];if(y)rows.push(`YouTube: ${metricNumber(y.views)} views · ${metricNumber(y.likes)} likes`);if(t)rows.push(`TikTok: ${metricNumber(t.views)} views · ${metricNumber(t.likes)} likes`);if(i)rows.push(`Instagram: ${metricNumber(i.views)} views · ${metricNumber(i.likes)} likes`);return rows.length?`<div class="note" style="margin-top:9px"><b>Automatic post analytics</b><br>${rows.join(' · ')}</div>`:''})()}
       ${videoInfo}
 
       <div class="row queue-actions">
@@ -8737,25 +9084,34 @@ function renderQueue(){
     if(q)await openStoredClip(q);
   }));
 
-  root.querySelectorAll('[data-post]').forEach(btn=>btn.addEventListener('click',()=>{
-    const q=state.queue.find(x=>x.id==btn.dataset.post);
-    if(q){
-      q.status='Posted';
-      q.postedAt=new Date().toISOString();
-      save();
-    }
+  root.querySelectorAll('[data-post]').forEach(btn=>btn.addEventListener('click',async()=>{
+    const id=String(btn.dataset.post);
+    if(queueActionBusy.has(`post:${id}`))return;
+    const q=state.queue.find(x=>String(x.id)===id);
+    if(!q)return;
+    queueActionBusy.add(`post:${id}`);btn.disabled=true;btn.textContent='Saving…';
+    q.status='Posted';
+    q.postedAt=new Date().toISOString();
+    save();
+    const result=await flushCloudSave();
+    queueActionBusy.delete(`post:${id}`);
+    if(result.ok){notifyUser('Post marked as posted and synced.','good')}else{notifyUser('Post marked locally; cloud sync will retry.','error')}
+    renderQueue();
   }));
 
   root.querySelectorAll('[data-del-q]').forEach(btn=>btn.addEventListener('click',async()=>{
-    const q=state.queue.find(x=>x.id==btn.dataset.delQ);
+    const id=String(btn.dataset.delQ);
+    if(queueActionBusy.has(`delete:${id}`))return;
+    const q=state.queue.find(x=>String(x.id)===id);
     if(!q)return;
+    queueActionBusy.add(`delete:${id}`);btn.disabled=true;btn.textContent='…';
 
     const hasStoredVideo=(q.videoPath&&!q.videoDeleted)||(isDriveRecord(q)&&q.driveFileId&&!q.videoDeleted);
     const message=hasStoredVideo
       ? 'Delete this queued post and its uploaded video?'
       : 'Delete this queued post?';
 
-    if(!confirm(message))return;
+    if(!confirm(message)){queueActionBusy.delete(`delete:${id}`);btn.disabled=false;return;}
 
     if(hasStoredVideo){
       if(isDriveRecord(q)){
@@ -8763,15 +9119,20 @@ function renderQueue(){
           await deleteStoredClip(q); // moves the Drive file to the trash (reversible)
         }catch(err){
           const keepGoing=confirm('Could not move the Google Drive video to the trash ('+(err.message||err)+').\n\nOK — delete only the queue entry and leave the video in Google Drive.\nCancel — keep everything.');
-          if(!keepGoing)return;
+          if(!keepGoing){queueActionBusy.delete(`delete:${id}`);btn.disabled=false;return;}
         }
       }else{
         try{await deleteStoredClip(q)}catch(e){}
       }
     }
 
-    state.queue=state.queue.filter(x=>x.id!=btn.dataset.delQ);
+    state.queue=state.queue.filter(x=>String(x.id)!==id);
     save();
+    const result=await flushCloudSave();
+    queueActionBusy.delete(`delete:${id}`);
+    if(result.ok)notifyUser('Queued post deleted and synced.','good');
+    else notifyUser('Queued post deleted locally; cloud sync will retry.','error');
+    renderQueue();
   }));
 }
 
@@ -8797,6 +9158,40 @@ function renderStorageStats(){
   el.textContent='📊 '+parts.join('  ·  ');
 }
 
+function integrationHealthItem(name,stateLabel,detail,tone=''){
+  return `<div class="health-item"><div class="health-item-head"><b>${esc(name)}</b><span class="health-dot ${tone}" aria-label="${esc(stateLabel)}"></span></div><p><strong>${esc(stateLabel)}</strong>${detail?` · ${esc(detail)}`:''}</p></div>`;
+}
+function renderIntegrationHealth(){
+  const root=document.getElementById('integrationHealth');
+  const last=document.getElementById('healthLastSync');
+  if(!root||!last)return;
+  const twitch=state.twitchStatus&&typeof state.twitchStatus==='object'?state.twitchStatus:{};
+  const social=state.socialConnections&&typeof state.socialConnections==='object'?state.socialConnections:{};
+  const sync=state.socialSyncStatus&&typeof state.socialSyncStatus==='object'?state.socialSyncStatus:{};
+  const cloudState=cloudLoadFallback?'Reconnecting':'Connected';
+  const cloudTone=cloudLoadFallback?'warn':currentUser&&sb?'good':'bad';
+  const cloudDetail=cloudLoadFallback?'Using local cache; cloud writes will retry':lastRemoteUpdatedAt?`last accepted ${formatTwitchDate(lastRemoteUpdatedAt)}`:'Authenticated workspace';
+  const botOk=Boolean(twitch.connected||twitch.lastSyncAt||sync.lastSyncAt);
+  const botError=twitch.error||sync.error||'';
+  const botDetail=botError||((twitch.lastSyncAt||sync.lastSyncAt)?`last sync ${formatTwitchDate(twitch.lastSyncAt||sync.lastSyncAt)}`:'No verified worker sync yet');
+  const twitchError=twitch.error||'';
+  const platform=(key,label)=>{
+    const value=social[key]&&typeof social[key]==='object'?social[key]:{};
+    const status=youtubeConnectionState(value);
+    return integrationHealthItem(label,status==='connected'?'Connected':status==='reauth'?'Reauth required':'Not connected',value.error||'No browser token is stored here',status==='connected'?'good':status==='reauth'?'warn':'');
+  };
+  root.innerHTML=[
+    integrationHealthItem('Supabase',cloudState,cloudDetail,cloudTone),
+    integrationHealthItem('Nappa Bot / Craftnode',botOk?'Syncing':'Not verified',botDetail,botOk?'good':botError?'warn':''),
+    integrationHealthItem('Twitch',twitch.connected?'Connected':'Not connected',twitchError||`Username ${twitch.login||'NappaVT'} · ${twitch.connected?'verified':'awaiting verified sync'}`,twitch.connected?'good':twitchError?'warn':''),
+    platform('instagram','Instagram'),
+    platform('tiktok','TikTok'),
+    platform('youtube','YouTube')
+  ].join('');
+  const latest=[lastRemoteUpdatedAt,sync.lastSyncAt,twitch.lastSyncAt].filter(Boolean).sort().pop();
+  last.textContent=latest?`Last verified ${formatTwitchDate(latest)}`:'No sync recorded';
+  last.className='status '+(latest?'s-ready':'');
+}
 function socialPlatformRecord(q,platform){
   const root=q?.socialAnalytics;
   return root&&typeof root==='object'&&root[platform]&&typeof root[platform]==='object'?root[platform]:null;
@@ -8809,11 +9204,11 @@ function socialMetricBlock(label,value){return `<div class="performance-mini"><s
 function renderPlatformPerformance(record,platform,q=null){
   const name=platform==='youtube'?'YouTube':platform==='tiktok'?'TikTok':'Instagram',suggestion=q?socialMatchSuggestion(q,platform):null;
   if(!record){
-    if(suggestion){const confidence=Math.round(num(suggestion.matchConfidence)*100);return `<div class="performance-platform"><div class="row space"><h4>${name}</h4><span class="pill match-confidence-medium">Confirm ${confidence}%</span></div><div class="match-suggestion"><b>Likely match — not linked automatically</b><div class="muted" style="margin-top:4px">${esc(suggestion.title||'Untitled post')}</div><div class="muted" style="margin-top:4px">Evidence: ${esc(socialEvidenceSummary(suggestion))}</div><div class="performance-mini-grid" style="margin-top:8px">${socialMetricBlock('Views',fmt(suggestion.views||0))}${socialMetricBlock('Likes',fmt(suggestion.likes||0))}</div><div class="row" style="margin-top:8px"><button class="btn good" data-confirm-social="${esc(q.id)}" data-platform="${platform}">Yes, link it</button><button class="btn secondary" data-reject-social="${esc(q.id)}" data-platform="${platform}">Not this one</button>${suggestion.url?`<a class="btn secondary" href="${esc(suggestion.url)}" target="_blank" rel="noopener">Open</a>`:''}</div></div></div>`}
+    if(suggestion){const confidence=Math.round(num(suggestion.matchConfidence)*100);return `<div class="performance-platform"><div class="row space"><h4>${name}</h4><span class="pill match-confidence-medium">Confirm ${confidence}%</span></div><div class="match-suggestion"><b>Likely match — not linked automatically</b><div class="muted" style="margin-top:4px">${esc(suggestion.title||'Untitled post')}</div><div class="muted" style="margin-top:4px">Evidence: ${esc(socialEvidenceSummary(suggestion))}</div><div class="performance-mini-grid" style="margin-top:8px">${socialMetricBlock('Views',metricNumber(suggestion.views))}${socialMetricBlock('Likes',metricNumber(suggestion.likes))}</div><div class="row" style="margin-top:8px"><button class="btn good" data-confirm-social="${esc(q.id)}" data-platform="${platform}">Yes, link it</button><button class="btn secondary" data-reject-social="${esc(q.id)}" data-platform="${platform}">Not this one</button>${suggestion.url?`<a class="btn secondary" href="${esc(suggestion.url)}" target="_blank" rel="noopener">Open</a>`:''}</div></div></div>`}
     return `<div class="performance-platform"><h4>${name}</h4><div class="muted">Not matched yet.</div></div>`;
   }
   const confidence=Math.round(num(record.matchConfidence)*100),matchLabel=record.matchedBy==='manual'?'Confirmed/manual':`Auto ${confidence}%`;
-  return `<div class="performance-platform"><div class="row space"><h4>${name}</h4><span class="pill ${record.matchedBy==='automatic'?'match-confidence-high':''}">${matchLabel}</span></div><div class="performance-mini-grid">${socialMetricBlock('Views',fmt(record.views||0))}${socialMetricBlock('Likes',fmt(record.likes||0))}${socialMetricBlock('Comments',fmt(record.comments||0))}${socialMetricBlock('Shares',fmt(record.shares||0))}</div>${platform==='youtube'?`<div class="performance-mini-grid" style="margin-top:5px">${socialMetricBlock('Avg viewed',record.averageViewPercentage?num(record.averageViewPercentage).toFixed(1)+'%':'—')}${socialMetricBlock('Subs gained',fmt(record.subscribersGained||0))}</div>`:platform==='instagram'?`<div class="performance-mini-grid" style="margin-top:5px">${socialMetricBlock('Reach',fmt(record.reach||0))}${socialMetricBlock('Saves',fmt(record.saved||0))}</div>`:''}<div class="muted" style="margin-top:7px">${esc(record.title||'')}</div>${record.matchedBy==='automatic'?`<div class="muted" style="margin-top:5px">Matched using ${esc(socialEvidenceSummary(record))}.</div>`:''}${record.url?`<div style="margin-top:8px"><a class="btn secondary" href="${esc(record.url)}" target="_blank" rel="noopener">Open ${name}</a></div>`:''}</div>`;
+  return `<div class="performance-platform"><div class="row space"><h4>${name}</h4><span class="pill ${record.matchedBy==='automatic'?'match-confidence-high':''}">${matchLabel}</span></div><div class="performance-mini-grid">${socialMetricBlock('Views',metricNumber(record.views))}${socialMetricBlock('Likes',metricNumber(record.likes))}${socialMetricBlock('Comments',metricNumber(record.comments))}${socialMetricBlock('Shares',metricNumber(record.shares))}</div>${platform==='youtube'?`<div class="performance-mini-grid" style="margin-top:5px">${socialMetricBlock('Avg viewed',metricAvailable(record.averageViewPercentage)?num(record.averageViewPercentage).toFixed(1)+'%':'Unavailable')}${socialMetricBlock('Subs gained',metricNumber(record.subscribersGained))}</div>`:platform==='instagram'?`<div class="performance-mini-grid" style="margin-top:5px">${socialMetricBlock('Reach',metricNumber(record.reach))}${socialMetricBlock('Saves',metricNumber(record.saved))}</div>`:''}<div class="muted" style="margin-top:7px">${esc(record.title||'')}</div>${record.matchedBy==='automatic'?`<div class="muted" style="margin-top:5px">Matched using ${esc(socialEvidenceSummary(record))}.</div>`:''}${record.url?`<div style="margin-top:8px"><a class="btn secondary" href="${esc(record.url)}" target="_blank" rel="noopener">Open ${name}</a></div>`:''}</div>`;
 }
 function promptSocialLink(queueId,platform){
   const q=(state.queue||[]).find(x=>String(x.id)===String(queueId));if(!q)return;
@@ -8855,15 +9250,15 @@ function renderContentPerformance(){
   applyBadge(igBadge,ig);
 
   document.getElementById('youtubeConnectionCopy').textContent=yt.connected
-    ?`${yt.channelTitle||'YouTube connected'} · ${yt.videos||0} recent uploads synced.`
+    ?`${yt.channelTitle||'YouTube connected'} · ${metricNumber(yt.videos)} recent uploads synced.`
     :ytState==='reauth'
       ?(yt.error?yt.error+' ':'YouTube authorization expired. ')+'Reconnect with /youtube_connect → /youtube_connect_finish in Discord.'
       :yt.error||'Configure YouTube credentials on Craftnode, then connect once in Discord.';
   document.getElementById('tiktokConnectionCopy').textContent=tt.connected
-    ?`${tt.displayName||'TikTok connected'} · ${tt.videos||0} recent public videos synced.`
+    ?`${tt.displayName||'TikTok connected'} · ${metricNumber(tt.videos)} recent public videos synced.`
     :tt.error||'Configure TikTok developer credentials, then connect once in Discord.';
   document.getElementById('instagramConnectionCopy').textContent=ig.connected
-    ?`@${String(ig.username||'Instagram').replace(/^@/,'')} · ${ig.videos||0} recent Reels synced.`
+    ?`@${String(ig.username||'Instagram').replace(/^@/,'')} · ${metricNumber(ig.videos)} recent Reels synced.`
     :ig.error||'Configure the Instagram App ID/Secret on Craftnode, then connect once in Discord.';
 
   const platforms=['youtube','tiktok','instagram'];
@@ -8948,9 +9343,9 @@ function renderContentPerformance(){
           <div class="muted">${esc(formatTwitchDate(v.publishedAt))}</div>
         </div>
         <div class="social-video-stats">
-          <b>${fmt(v.views||0)} views</b><br>
-          ${fmt(v.likes||0)} likes · ${fmt(v.comments||0)} comments · ${fmt(v.shares||0)} shares
-          ${platform==='instagram'?`<br>${fmt(v.reach||0)} reach · ${fmt(v.saved||0)} saves`:''}
+          <b>${metricNumber(v.views)} views</b><br>
+          ${metricNumber(v.likes)} likes · ${metricNumber(v.comments)} comments · ${metricNumber(v.shares)} shares
+          ${platform==='instagram'?`<br>${metricNumber(v.reach)} reach · ${metricNumber(v.saved)} saves`:''}
         </div>
       </div>`).join('')
       :'<div class="empty">No analytics synced yet.</div>';
@@ -8968,9 +9363,18 @@ function renderContentPerformance(){
   );
 }
 
-document.getElementById('requestSocialRefresh').addEventListener('click',()=>{
+let socialRefreshBusy=false;
+document.getElementById('requestSocialRefresh').addEventListener('click',async()=>{
+  const btn=document.getElementById('requestSocialRefresh');
+  if(socialRefreshBusy)return;
+  socialRefreshBusy=true;btn.disabled=true;btn.textContent='Requesting…';
   state.socialRefreshRequested=true;save();
-  document.getElementById('socialSyncCopy').textContent='Refresh requested · Nappa Bot will process it on the next worker check.';
+  const result=await flushCloudSave();
+  document.getElementById('socialSyncCopy').textContent=result.ok
+    ?'Refresh queued · Nappa Bot will process it on the next worker check.'
+    :'Refresh kept locally · cloud sync will retry.';
+  notifyUser(result.ok?'Social analytics refresh queued.':'Social refresh was not confirmed by Supabase.',result.ok?'good':'error');
+  setTimeout(()=>{socialRefreshBusy=false;btn.disabled=false;btn.textContent='↻ Refresh analytics'},3000);
 });
 
 function chart(rootId,data){
@@ -9051,8 +9455,8 @@ function glanceTimeLabel(date){
   const sameDay=date.toDateString()===todayDate.toDateString();
   const tomorrow=new Date(todayDate);tomorrow.setDate(todayDate.getDate()+1);
   const day=sameDay?'Today':date.toDateString()===tomorrow.toDateString()?'Tomorrow':
-    date.toLocaleDateString([],{weekday:'short',day:'numeric',month:'short'});
-  return `${day} · ${date.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`;
+    date.toLocaleDateString([],{timeZone:APP_TIME_ZONE,weekday:'short',day:'numeric',month:'short'});
+  return `${day} · ${date.toLocaleTimeString([],{timeZone:APP_TIME_ZONE,hour:'2-digit',minute:'2-digit'})}`;
 }
 function renderOverviewSnapshot(){
   const root=document.getElementById('overviewSnapshot');
@@ -9068,10 +9472,10 @@ function renderOverviewSnapshot(){
   const attention=suggestions+advisorOpen;
 
   const liveValue=live&&streamStatus.active!==false
-    ?`${fmt(live.currentViewers||0)} watching`
+    ?`${metricNumber(live.currentViewers)} watching`
     :'Offline';
   const liveCopy=live&&streamStatus.active!==false
-    ?`${live.game||'Live on Twitch'} · peak ${fmt(live.peakViewers||0)}`
+    ?`${live.game||'Live on Twitch'} · peak ${metricNumber(live.peakViewers)}`
     :streamStatus.eventsubConnected
       ?'Tracking ready for your next stream'
       :'Nappa Bot will detect your next stream';
@@ -9079,7 +9483,9 @@ function renderOverviewSnapshot(){
   const nextValue=next?(next.postTitle||next.title||'Queued post'):'Nothing scheduled';
   const nextCopy=next?`${glanceTimeLabel(next._when)} · ${next.status||'Planned'}`:'Add a post when you know what goes out next';
 
-  const latestValue=latest?`${num(latest.avg).toFixed(1)} avg · ${fmt(latest.peak||0)} peak`:'No report yet';
+  const latestValue=latest
+    ?`${metricNumber(latest.avg,v=>num(v).toFixed(1))} avg · ${metricNumber(latest.peak)} peak`
+    :'No report yet';
   const latestCopy=latest?`${latest.game||latest.title||'Stream'} · ${streamDateLabel(latest)}`:'Your latest stream will appear here automatically';
 
   let attentionValue='All clear';
@@ -9141,7 +9547,9 @@ function renderDashboard(){
   const automaticSocialViews=(state.queue||[]).reduce((total,q)=>total+num(socialPlatformRecord(q,'youtube')?.views)+num(socialPlatformRecord(q,'tiktok')?.views)+num(socialPlatformRecord(q,'instagram')?.views),0);
   document.getElementById('kViews').textContent=fmt(automaticSocialViews||sum(posted,c=>c.views));
   document.getElementById('kClipFollows').textContent=fmt(sum(posted,c=>c.follows));
-  document.getElementById('kAvg').textContent=state.streams.length?num(state.streams[0].avg).toFixed(1):'0';
+  document.getElementById('kAvg').textContent=state.streams.length&&metricAvailable(state.streams[0].avg)
+    ?num(state.streams[0].avg).toFixed(1)
+    :'—';
   const routineDone=Object.values(state.routine).filter(Boolean).length;
   const progress=Math.min(100,Math.round((state.streams.length/12*35)+(posted.length/20*45)+(routineDone/routineItems.length*20)));
   document.getElementById('progressPct').textContent=progress+'%';document.getElementById('progressBar').style.width=progress+'%';
@@ -9218,14 +9626,19 @@ document.getElementById('importBackup').addEventListener('change',e=>{if(!isOwne
   }catch(err){alert('Could not read that backup.')}};
   r.readAsText(file);
 });
+let resetBusy=false;
 document.getElementById('resetAll').addEventListener('click',async()=>{
+  const button=document.getElementById('resetAll');
+  if(resetBusy)return;
   if(!confirm('Delete all dashboard data for this signed-in account on this browser AND in the cloud?'))return;
   const typed=(prompt('This permanently deletes EVERYTHING: queue, clips, streams, analytics and settings.\n\nType DELETE to confirm.')||'').trim();
   if(typed!=='DELETE'){alert('Reset cancelled. Nothing was deleted.');return}
-  await resetCloudAndLocal();
+  resetBusy=true;button.disabled=true;button.textContent='Resetting…';
+  try{await resetCloudAndLocal();notifyUser('Dashboard reset completed.','good');}
+  finally{resetBusy=false;button.disabled=false;button.textContent='Reset everything'}
 });
 
-function renderAll(){renderRoutine();renderStreams();renderStreamLibrary();renderClips();renderQueue();renderTwitchClips();renderContentPerformance();renderDashboard();renderAnalytics();renderAdvisorNotes();renderStorageStats()}
+function renderAll(){renderRoutine();renderStreams();renderStreamLibrary();renderClips();renderQueue();renderTwitchClips();renderContentPerformance();renderDashboard();renderAnalytics();renderAdvisorNotes();renderStorageStats();renderIntegrationHealth()}
 renderAll();
 // Attempt a silent Google Drive reconnect after startup (no popups; see
 // gdriveSilentReconnect). Runs once, shortly after first paint.
@@ -9377,17 +9790,6 @@ setTimeout(()=>{try{gdriveSilentReconnect()}catch(e){}},600);
   const shell=document.getElementById('dashboardShell');
   if(shell){
     const observer=new MutationObserver(repairControlRoomShell);
-    observer.observe(shell,{attributes:true,attributeFilter:['class','style']});
-  }
-
-  // Expose only for diagnostics if needed.
-  window.repairControlRoomShell=repairControlRoomShell;
-})();
-</script>
-
-</body>
-</html>
-ionObserver(repairControlRoomShell);
     observer.observe(shell,{attributes:true,attributeFilter:['class','style']});
   }
 
