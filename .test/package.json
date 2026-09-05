@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "test": "cd .. && NODE_PATH=.test/node_modules node --test .test/*.js"
+  },
   "dependencies": {
     "jsdom": "^24.1.3"
   }
