@@ -15,10 +15,34 @@ this document. If the bot was implemented against a different field naming (e.g.
 - Other arrays in the same JSON that MUST be preserved on every bot write:
   `fields`, `routine`, `streams`, `clips`, `twitchClips`, `twitchStatus`, `streamTrackingStatus`,
   `streamAudienceHistory`, `liveStreamSession`, `streamLastReport`, `twitchHistoryStatus`,
-  `socialConnections`, `socialVideos`, `socialSyncStatus`, `theme`.
+  `socialConnections`, `socialVideos`, `socialSyncStatus`, `theme`,
+  `twitchRefreshRequestedAt`, `twitchHistoryImportRequestedAt`, `socialRefreshRequestedAt`.
 - **Bot writes must be read-modify-write of the whole JSON with unknown fields preserved.**
   Rewriting records from a fixed schema strips Drive metadata (failure mode: "overwriting Drive
   metadata").
+- The three `*RequestedAt` timestamps are additive companions to the existing boolean request flags
+  (`twitchRefreshRequestedAt` already existed; `twitchHistoryImportRequestedAt` and
+  `socialRefreshRequestedAt` are new). The dashboard uses them only to show honest
+  requested/pending/stale states in the UI. The bot does not have to read them — its existing
+  read-modify-write behaviour keeps them intact automatically — but it MAY use them to detect
+  request order / dedupe if useful.
+
+## Owner-side Twitch-clip packaging fields (dashboard-owned — do not overwrite)
+
+Each `state.twitchClips[]` record may additionally carry these **dashboard-owned** packaging fields:
+
+```
+packageTone, packageVariant, packageSelectedIndex, packageSelectedTitle,
+packageRejectedTitles, packageUserContext, packageLastTitle, packageLastUsedAt
+```
+
+These hold the user's chosen title/tone/context per clip (the "Nappa Pack" generator). The bot only
+imports and refreshes import metadata (title, urls, thumbnails, stats). Since 2026-09-05 the
+dashboard's pre-save merge resolves these packaging fields per clip from whichever side used
+packaging most recently (`packageLastUsedAt`), so **the bot must keep doing read-modify-write and
+must never clear or overwrite `package*` fields** — otherwise a bot metadata refresh would revert
+the user's title selection. The bot may READ `packageSelectedTitle`/`packageSelectedIndex`
+(e.g. for captions), but needs no write access to any of them.
 
 ## 2. Storage-provider schema (camelCase — exactly as the frontend writes it)
 

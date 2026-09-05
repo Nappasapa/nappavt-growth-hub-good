@@ -1044,7 +1044,7 @@ th{
 
 .stream-library-toolbar{
   display:grid;
-  grid-template-columns:minmax(0,1fr) 220px;
+  grid-template-columns:minmax(0,1fr) 200px 190px;
   gap:9px;
 }
 .stream-library-grid{
@@ -1227,7 +1227,8 @@ body.advisor-mode .page textarea:not(.advisor-allowed),
 body.advisor-mode .page select:not(.advisor-allowed){pointer-events:none;opacity:.48}
 body.advisor-mode #openLatestStreamReport,
 body.advisor-mode #streamLibrarySearch,
-body.advisor-mode #streamLibraryFilter{pointer-events:auto;opacity:1}
+body.advisor-mode #streamLibraryFilter,
+body.advisor-mode #streamLibrarySort{pointer-events:auto;opacity:1}
 #rolePill{color:var(--accent);font-weight:850}
 
 /* ---------- responsive ---------- */
@@ -4404,6 +4405,27 @@ html[data-theme="nappa"] #dashboardShell:after{
   html[data-theme="nappa"] .nappa-pack:after{font-size:36px}
 }
 </style>
+<style id="title-selection-6-4">
+/* Honest title-selection states: a generated title only ever shows SELECTED
+   when it is the stored, content-matched selection. The top-ranked row is a
+   suggestion (TOP PICK) until the user locks a title in. */
+.nappa-title-option.suggested{border-style:dashed!important;border-color:color-mix(in srgb,var(--accent) 45%,var(--line))!important}
+.nappa-title-option.suggested:hover{border-style:solid!important}
+.nappa-title-option.suggested .nappa-title-angle span:last-child{letter-spacing:.14em}
+.nappa-title-option:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Connection health overview */
+.conn-health-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.conn-health-item{border:1px solid var(--line);border-radius:9px;padding:10px 12px;background:var(--panel2);min-width:0}
+.conn-health-head{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:800}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:0 0 auto}
+.conn-dot.good{background:#54c07a}
+.conn-dot.warn{background:#e0a44b}
+.conn-dot.bad{background:#e05f5f}
+.conn-dot.mute{background:var(--muted)}
+.conn-health-label{margin-top:6px;font-size:10.5px;color:var(--muted);line-height:1.5;word-break:break-word}
+.conn-health-action{margin-top:6px;font-size:10px;font-weight:700;color:var(--accent);line-height:1.5}
+</style>
 
 </head>
 <body class="auth-open">
@@ -4531,6 +4553,11 @@ html[data-theme="nappa"] #dashboardShell:after{
  <section class="page active" id="dashboard">
  <div class="grid overview-grid">
  <div class="overview-snapshot" id="overviewSnapshot" aria-live="polite"></div>
+
+ <div class="card span12 conn-health-card">
+ <div class="row space"><div><h2>Connection health</h2><div class="muted">Only marked healthy when real data has actually flowed. Anything actionable says what to do.</div></div></div>
+ <div class="conn-health-grid" id="connectionHealth" style="margin-top:12px"></div>
+ </div>
 
  <div class="card span12 activity-card">
  <div class="progress-wrap">
@@ -4671,6 +4698,14 @@ html[data-theme="nappa"] #dashboardShell:after{
  <option value="auto">Full automatic reports</option>
  <option value="historical">Historical Twitch VODs</option>
  <option value="manual">Manual entries</option>
+ </select>
+ <select id="streamLibrarySort" aria-label="Sort streams">
+ <option value="new">Newest first</option>
+ <option value="avg">Highest avg viewers</option>
+ <option value="peak">Highest peak viewers</option>
+ <option value="duration">Longest streams</option>
+ <option value="chatters">Most chatters</option>
+ <option value="follows">Most new followers</option>
  </select>
  </div>
 
@@ -5312,8 +5347,11 @@ let lastCloudSaveError=null;
 const syncPill=document.getElementById('syncPill');
 const syncText=document.getElementById('syncText');
 
+let lastSyncUiStatus='';
+let lastSuccessfulSyncAt='';
 function setSyncStatus(status,text){
   if(!syncPill||!syncText)return;
+  lastSyncUiStatus=status||'';
   syncPill.classList.remove('syncing','synced','error');
   if(status)syncPill.classList.add(status);
   syncText.textContent=text;
@@ -5419,7 +5457,7 @@ function applyWorkspaceRoleUI(){
   const inboxCopy=document.getElementById('advisorInboxCopy');
   if(inboxTitle)inboxTitle.textContent=isAdvisor?'Your feedback':'Advisor feedback inbox';
   if(inboxCopy)inboxCopy.textContent=isAdvisor?'Notes you leave for Nappa appear here.':'Feedback from Advisor accounts appears here automatically.';
-  for(const id of ['streamLibrarySearch','streamLibraryFilter','openLatestStreamReport']){
+  for(const id of ['streamLibrarySearch','streamLibraryFilter','streamLibrarySort','openLatestStreamReport']){
     const el=document.getElementById(id);if(el)el.classList.add('advisor-allowed');
   }
   if(isAdvisor){
@@ -5570,6 +5608,13 @@ function mergeBotQueueFields(remoteState){
 }
 
 
+// Owner-side packaging preferences on a Twitch clip. The bot only imports and
+// refreshes clip metadata, so these fields must survive every remote update
+// instead of being replaced by the remote copy wholesale.
+const TWITCH_CLIP_PACKAGE_FIELDS=[
+  'packageTone','packageVariant','packageSelectedIndex','packageSelectedTitle',
+  'packageRejectedTitles','packageUserContext','packageLastTitle','packageLastUsedAt'
+];
 function mergeBotTwitchFields(remoteState){
   if(!remoteState)return false;
   let changed=false;
@@ -5580,9 +5625,34 @@ function mergeBotTwitchFields(remoteState){
     if(JSON.stringify(state.twitchStatus)!==before)changed=true;
   }
 
+  const localRows=Array.isArray(state.twitchClips)?state.twitchClips:[];
   const remoteRows=Array.isArray(remoteState.twitchClips)?remoteState.twitchClips:[];
-  if(JSON.stringify(remoteRows)!==JSON.stringify(state.twitchClips||[])){
-    state.twitchClips=remoteRows.map(c=>({...c}));
+  const localById=new Map();
+  localRows.forEach(c=>{if(c&&c.id!==undefined)localById.set(String(c.id),c)});
+
+  // Per-clip merge: the remote copy is authoritative for bot-owned import
+  // metadata (title, urls, thumbnails, stats …) and for WHICH clips exist
+  // (bot pruning keeps working), while the owner-side packaging fields come
+  // from whichever side used packaging most recently. A just-made title
+  // selection can therefore never be erased by the pre-save merge or by a
+  // bot/remote metadata refresh.
+  const merged=remoteRows.map(remote=>{
+    if(!remote||remote.id===undefined)return remote;
+    const local=localById.get(String(remote.id));
+    if(!local)return {...remote};
+    const localStamp=Date.parse(local.packageLastUsedAt||'')||0;
+    const remoteStamp=Date.parse(remote.packageLastUsedAt||'')||0;
+    const source=localStamp>=remoteStamp?local:remote;
+    const next={...remote};
+    for(const key of TWITCH_CLIP_PACKAGE_FIELDS){
+      if(source[key]!==undefined)next[key]=source[key];
+      else delete next[key];
+    }
+    return next;
+  });
+
+  if(JSON.stringify(merged)!==JSON.stringify(localRows)){
+    state.twitchClips=merged;
     changed=true;
   }
 
@@ -5682,6 +5752,7 @@ async function refreshFullCloudState({force=false}={}){
     // analytics, notes/fields, live telemetry and bot status.
     state=normalizeState(data.state);
     lastRemoteUpdatedAt=remoteUpdated||lastRemoteUpdatedAt;
+    lastSuccessfulSyncAt=new Date().toISOString();
     writeLocalState();
     applyStateToUI();
     setSyncStatus('synced',workspaceRole==='advisor'?'Live · read-only':'Live synced');
@@ -5722,11 +5793,23 @@ async function writeCloudStateNow(){
       .eq('user_id',workspaceOwnerId)
       .maybeSingle();
     if(readError)throw readError;
-    if(remote){mergeBotQueueFields(remote.state);mergeBotTwitchFields(remote.state);mergeBotStreamFields(remote.state);mergeBotSocialFields(remote.state);}
+    let mergedExternal=false;
+    if(remote){
+      mergedExternal=mergeBotQueueFields(remote.state)
+        |mergeBotTwitchFields(remote.state)
+        |mergeBotStreamFields(remote.state)
+        |mergeBotSocialFields(remote.state);
+    }
+    // The merge may have brought in newer external state (bot actions or a
+    // selection from another device). Re-render so the visible UI always
+    // agrees with what is actually stored — plain inputs stay untouched.
+    if(mergedExternal){writeLocalState();renderAll();}
 
+    // Persist a frozen snapshot, not the live reference: a concurrent state
+    // mutation while the upsert is awaited must not leak into the payload.
     const payload={
       user_id:workspaceOwnerId,
-      state:state,
+      state:JSON.parse(JSON.stringify(state)),
       updated_at:new Date().toISOString()
     };
     const {error}=await sb.from('dashboard_state').upsert(payload,{onConflict:'user_id'});
@@ -5734,6 +5817,8 @@ async function writeCloudStateNow(){
     writeLocalState();
     localDirty=false;
     lastRemoteUpdatedAt=payload.updated_at;
+    lastSuccessfulSyncAt=payload.updated_at;
+    lastCloudSaveError=null;
     setSyncStatus('synced','Live synced');
     return {ok:true};
   }catch(err){
@@ -5793,6 +5878,19 @@ function scheduleCloudRecovery(delay=12000){
       if(error)throw error;
 
       if(data&&data.state){
+        // Never clobber unsynced local edits with the recovered cloud copy —
+        // push them up first instead of restoring the older cloud state.
+        if(isOwner()&&(localDirty||cloudSaveBusy)){
+          cloudLoadFallback=false;
+          const result=await writeCloudStateNow();
+          if(result&&result.ok){
+            setSyncStatus('synced','Synced');
+            loginMode.textContent='Cloud sync active · same dashboard on your signed-in devices.';
+            return;
+          }
+          scheduleCloudRecovery(15000);
+          return;
+        }
         // Once cloud is reachable again, restore the authoritative cloud
         // state. Normal local cache resumes after this.
         state=normalizeState(data.state);
@@ -5844,6 +5942,7 @@ async function loadCloudState(user){
     if(data&&data.state){
       state=normalizeState(data.state);
       lastRemoteUpdatedAt=String(data.updated_at||'');
+      lastSuccessfulSyncAt=new Date().toISOString();
       writeLocalState();
       cloudLoadFallback=false;
       applyStateToUI();
@@ -5938,19 +6037,26 @@ function randomInviteToken(){
 }
 async function createAdvisorInvite(){
   if(!sb||!currentUser||!isOwner())return;
+  const inviteBtn=document.getElementById('createAdvisorInvite');
+  if(inviteBtn&&inviteBtn.disabled)return; // double-click guard
+  if(inviteBtn){inviteBtn.disabled=true;inviteBtn.textContent='Creating…';}
+  const box=document.getElementById('advisorInviteResult');
+  try{
   const token=randomInviteToken();
   const email=(document.getElementById('advisorInviteEmail')?.value||'').trim();
   const expires=new Date(Date.now()+7*24*60*60*1000).toISOString();
   const {error}=await sb.from('growth_hub_invites').insert({
     token,owner_user_id:currentUser.id,email_hint:email||null,expires_at:expires
   });
-  const box=document.getElementById('advisorInviteResult');
   if(error){box.innerHTML=`<div class="note">Could not create invite: ${esc(error.message)}</div>`;return}
   const link=`${PUBLIC_APP_URL}/?invite=${encodeURIComponent(token)}`;
   box.innerHTML=`<div class="invite-box"><b>Advisor invite — expires in 7 days</b><br><span id="advisorInviteLink">${esc(link)}</span><div class="row" style="margin-top:8px"><button class="btn secondary" id="copyAdvisorInvite">Copy invite link</button></div></div>`;
   document.getElementById('copyAdvisorInvite')?.addEventListener('click',async e=>{
     try{await navigator.clipboard.writeText(link);e.currentTarget.textContent='Copied ✓'}catch(err){prompt('Copy this invite link:',link)}
   });
+  }finally{
+    if(inviteBtn){inviteBtn.disabled=false;inviteBtn.textContent='Create 7-day invite';}
+  }
 }
 async function loadAdvisorMembers(){
   const root=document.getElementById('advisorMembersList');
@@ -6001,16 +6107,23 @@ function renderAdvisorNotes(){
 }
 async function submitAdvisorNote(){
   if(!sb||!currentUser||workspaceRole!=='advisor')return;
+  const submitBtn=document.getElementById('submitAdvisorNote');
+  if(submitBtn&&submitBtn.disabled)return; // double-submit guard
   const type=document.getElementById('advisorNoteType').value;
   const target=(document.getElementById('advisorNoteTarget').value||'').trim();
   const body=(document.getElementById('advisorNoteBody').value||'').trim();
   if(!body){alert('Write some feedback first.');return}
-  const {error}=await sb.from('growth_hub_advisor_notes').insert({
-    owner_user_id:workspaceOwnerId,author_user_id:currentUser.id,author_email:currentUser.email||workspaceMember?.email||'Advisor',target_type:type,target_ref:target||null,body
-  });
-  if(error){alert('Could not send feedback: '+error.message);return}
-  document.getElementById('advisorNoteTarget').value='';document.getElementById('advisorNoteBody').value='';
-  await loadAdvisorNotes();
+  if(submitBtn){submitBtn.disabled=true;submitBtn.textContent='Sending…';}
+  try{
+    const {error}=await sb.from('growth_hub_advisor_notes').insert({
+      owner_user_id:workspaceOwnerId,author_user_id:currentUser.id,author_email:currentUser.email||workspaceMember?.email||'Advisor',target_type:type,target_ref:target||null,body
+    });
+    if(error){alert('Could not send feedback: '+error.message);return}
+    document.getElementById('advisorNoteTarget').value='';document.getElementById('advisorNoteBody').value='';
+    await loadAdvisorNotes();
+  }finally{
+    if(submitBtn){submitBtn.disabled=false;submitBtn.textContent='Send feedback';}
+  }
 }
 async function resolveAdvisorNote(id){
   if(!isOwner())return;
@@ -6027,6 +6140,11 @@ document.getElementById('createAdvisorInvite')?.addEventListener('click',createA
 document.getElementById('submitAdvisorNote')?.addEventListener('click',submitAdvisorNote);
 
 function save(){if(!isOwner()){renderAll();return}writeLocalState();scheduleCloudSave();renderAll()}
+// CSS.escape with a fallback for environments lacking it (same contract:
+// make an arbitrary string safe inside a quoted attribute selector).
+const cssEscape=(window.CSS&&typeof window.CSS.escape==='function')
+  ?v=>window.CSS.escape(String(v))
+  :v=>String(v).replace(/[^a-zA-Z0-9_-]/g,m=>'\\'+m);
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function num(v){const n=Number(v);return Number.isFinite(n)?n:0}
 function fmt(n){return Math.round(num(n)).toLocaleString()}
@@ -6124,7 +6242,7 @@ function streamDateLabel(s){
   if(!raw)return '';
   const d=new Date(raw);
   if(Number.isNaN(d.getTime()))return String(s.date||'');
-  return d.toLocaleDateString([],{
+  return localeDate(d,{
     weekday:'short',day:'2-digit',month:'short',year:'numeric'
   });
 }
@@ -6132,7 +6250,7 @@ function streamTimeLabel(value){
   if(!value)return '';
   const d=new Date(value);
   if(Number.isNaN(d.getTime()))return '';
-  return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  return localeTime(d,{hour:'2-digit',minute:'2-digit'});
 }
 function durationLabelFromMinutes(minutes){
   const total=Math.max(0,Math.round(num(minutes)));
@@ -6287,6 +6405,7 @@ function renderStreams(){
 
 let streamLibrarySearch='';
 let streamLibraryFilter='all';
+let streamLibrarySort='new'; // render-order only — never touches stored state
 
 function renderStreamLibrary(){
   const root=document.getElementById('streamLibraryCards');
@@ -6304,7 +6423,16 @@ function renderStreamLibrary(){
     ].some(v=>String(v||'').toLowerCase().includes(q)));
   }
 
-  rows.sort((a,b)=>String(b.startedAt||b.date||b.createdAt||'').localeCompare(String(a.startedAt||a.date||a.createdAt||'')));
+  const streamDurationMinutes=s=>s.durationMinutes!==undefined?num(s.durationMinutes):s.hours!==undefined?num(s.hours)*60:0;
+  const sortFns={
+    new:(a,b)=>String(b.startedAt||b.date||b.createdAt||'').localeCompare(String(a.startedAt||a.date||a.createdAt||'')),
+    avg:(a,b)=>num(b.avg)-num(a.avg),
+    peak:(a,b)=>num(b.peak)-num(a.peak),
+    duration:(a,b)=>streamDurationMinutes(b)-streamDurationMinutes(a),
+    chatters:(a,b)=>num(b.uniqueChatters)-num(a.uniqueChatters),
+    follows:(a,b)=>num(b.follows)-num(a.follows)
+  };
+  rows.sort(sortFns[streamLibrarySort]||sortFns.new);
 
   if(!rows.length){
     root.innerHTML='<div class="empty" style="grid-column:1/-1">No matching streams.</div>';
@@ -6330,7 +6458,9 @@ function renderStreamLibrary(){
           <div class="stream-mini-metric"><span>Avg</span><b>${s.avg==null?'—':num(s.avg).toFixed(1)}</b></div>
           <div class="stream-mini-metric"><span>Peak</span><b>${s.peak==null?'—':fmt(s.peak)}</b></div>
           <div class="stream-mini-metric"><span>Chatters</span><b>${s.uniqueChatters==null?'—':fmt(s.uniqueChatters)}</b></div>
-          <div class="stream-mini-metric"><span>Follows</span><b>${s.follows==null?'—':'+'+fmt(s.follows)}</b></div>`}
+          <div class="stream-mini-metric"><span>Returning</span><b>${s.returning==null?'—':fmt(s.returning)}</b></div>
+          <div class="stream-mini-metric"><span>Follows</span><b>${s.follows==null?'—':'+'+fmt(s.follows)}</b></div>
+          <div class="stream-mini-metric"><span>Clips</span><b>${s.clips==null?'—':fmt(s.clips)}</b></div>`}
       </div>
 
       ${s.peakMoment?.summary?`<div class="muted" style="margin-top:10px">🔥 ${esc(s.peakMoment.summary)}</div>`:''}
@@ -6345,12 +6475,24 @@ function renderStreamLibrary(){
   root.querySelectorAll('[data-open-stream-report]').forEach(btn=>btn.addEventListener('click',()=>openStreamReport(btn.dataset.openStreamReport)));
   const hs=state.twitchHistoryStatus||{};
   const statusRoot=document.getElementById('twitchHistoryStatus');
+  const historyBtn=document.getElementById('importTwitchHistory');
+  const historyOp=operationState(state.twitchHistoryImportRequestedAt,hs.lastSyncAt);
+  if(historyBtn){
+    historyBtn.disabled=historyOp.state==='pending';
+    historyBtn.textContent=
+      historyOp.state==='pending'?'Import requested…':
+      historyOp.state==='stale'?'↻ Retry history import':'↻ Import older Twitch VODs';
+  }
   if(statusRoot){
     statusRoot.textContent=hs.error
-      ?`History import error: ${hs.error}`
-      :hs.lastSyncAt
-        ?`Historical Twitch sync: ${hs.availableVods||0} currently available VOD(s) · last checked ${streamDateLabel({startedAt:hs.lastSyncAt})}`
-        :'Older Twitch VODs have not been imported yet.';
+      ?`History import error: ${hs.error} — use the import button to retry.`
+      :historyOp.state==='pending'
+        ?`History import requested ${timeAgoLabel(historyOp.at)} · waiting for Nappa Bot to pick it up.`
+        :historyOp.state==='stale'
+          ?`History import requested ${timeAgoLabel(historyOp.at)} got no response. Nappa Bot may be offline — retry or check Craftnode.`
+          :hs.lastSyncAt
+            ?`Historical Twitch sync: ${hs.availableVods||0} currently available VOD(s) · last checked ${streamDateLabel({startedAt:hs.lastSyncAt})}`
+            :'Older Twitch VODs have not been imported yet.';
   }
 
   root.querySelectorAll('[data-del-stream]').forEach(btn=>btn.addEventListener('click',()=>{
@@ -6380,6 +6522,33 @@ function svgTimeline(samples,key,label){
 }
 function metricBox(label,value,extra=''){
   return `<div class="stream-kpi"><span>${esc(label)}</span><b>${esc(value)}</b>${extra?`<div class="muted" style="margin-top:4px">${esc(extra)}</div>`:''}</div>`;
+}
+// Twitch clips created while this stream was live (bot-synced clip metadata).
+// Manual entries only carry a date, so they match clips from the same day.
+function streamWindowClips(s){
+  if(!s)return [];
+  let start=Date.parse(s.startedAt||'');
+  let end;
+  if(Number.isFinite(start)){
+    const durMin=num(s.durationMinutes);
+    end=durMin>0?start+durMin*60000:start+6*3600000;
+  }else if(s.date){
+    start=Date.parse(`${s.date}T00:00:00`);
+    if(!Number.isFinite(start))return [];
+    end=start+24*3600000;
+  }else{
+    return [];
+  }
+  return (state.twitchClips||[]).filter(c=>{
+    const t=Date.parse(c&&c.createdAt||'');
+    return Number.isFinite(t)&&t>=start&&t<=end;
+  });
+}
+// Queue posts built from clips of this stream (real linkage via twitchClipId).
+function streamLinkedQueuePosts(s){
+  const ids=new Set(streamWindowClips(s).map(c=>String(c.id)));
+  if(!ids.size)return [];
+  return (state.queue||[]).filter(q=>q&&q.twitchClipId&&ids.has(String(q.twitchClipId)));
 }
 function openStreamReport(id){
   const s=(state.streams||[]).find(x=>String(x.id)===String(id));
@@ -6483,6 +6652,24 @@ function openStreamReport(id){
       </section>
     </div>
 
+    ${(()=>{
+      const windowClips=streamWindowClips(s);
+      const linkedPosts=streamLinkedQueuePosts(s);
+      const clipsHtml=windowClips.length
+        ?windowClips.slice(0,5).map(c=>`<div class="todo"><span>🎬 ${esc(c.title||'Untitled clip')} · ${fmt(c.viewCount||0)} views</span>${c.url?`<a href="${esc(c.url)}" target="_blank" rel="noopener">open</a>`:''}</div>`).join('')
+        :'<div class="empty">No synced Twitch clips fall inside this stream’s time window.</div>';
+      const postsHtml=linkedPosts.length
+        ?linkedPosts.map(q=>{
+          const views=['youtube','tiktok','instagram'].map(p=>socialPlatformRecord(q,p)).filter(Boolean).reduce((t,r)=>t+num(r.views),0);
+          return `<div class="todo"><span>${esc(q.postTitle||q.title||'Queued post')} · ${esc(q.status||'Planned')}${views?` · ${fmt(views)} tracked views`:''}</span></div>`;
+        }).join('')
+        :'<div class="empty">No queued posts are linked to clips from this stream window yet.</div>';
+      return `<div class="report-two-col">
+        <section class="report-section"><h3>Clips from this stream</h3>${clipsHtml}</section>
+        <section class="report-section"><h3>Connected social posts</h3>${postsHtml}</section>
+      </div>`;
+    })()}
+
     <section class="report-section">
       <h3>Stream event timeline</h3>
       ${events.length
@@ -6530,6 +6717,9 @@ document.getElementById('streamLibrarySearch').addEventListener('input',e=>{
 document.getElementById('streamLibraryFilter').addEventListener('change',e=>{
   streamLibraryFilter=e.target.value;renderStreamLibrary();
 });
+document.getElementById('streamLibrarySort').addEventListener('change',e=>{
+  streamLibrarySort=e.target.value;renderStreamLibrary();
+});
 
 document.getElementById('addClip').addEventListener('click',()=>{
   const title=document.getElementById('cTitle').value.trim();if(!title){alert('Give the clip a name first.');return}
@@ -6562,7 +6752,10 @@ function renderClips(){
     tr.innerHTML=`<td><b>${esc(c.title)}</b><div class="muted">${c.length?c.length+' sec':''}</div></td><td>${esc(c.format)}</td><td>${badge(c.status)}</td><td>${c.score}/10</td><td>${esc(c.hook)}</td><td>${esc(c.source)}</td><td>${fmt(c.views)}</td><td>${fmt(c.follows)}</td><td>${esc(c.notes)}</td><td><div class="row"><button class="btn secondary" data-cycle="${c.id}">Status</button><button class="btn danger" data-del-clip="${c.id}" aria-label="Delete clip ${esc(c.title)}">×</button></div></td>`;
     tb.appendChild(tr);
   });
-  tb.querySelectorAll('[data-del-clip]').forEach(btn=>btn.addEventListener('click',()=>{state.clips=state.clips.filter(x=>x.id!=btn.dataset.delClip);save()}));
+  tb.querySelectorAll('[data-del-clip]').forEach(btn=>btn.addEventListener('click',()=>{
+    if(!confirm('Delete this clip log entry?'))return;
+    state.clips=state.clips.filter(x=>x.id!=btn.dataset.delClip);save();
+  }));
   tb.querySelectorAll('[data-cycle]').forEach(btn=>btn.addEventListener('click',()=>{
     const c=state.clips.find(x=>x.id==btn.dataset.cycle);if(!c)return;
     const order=['Idea','Editing','Ready','Posted','Skip'];c.status=order[(order.indexOf(c.status)+1)%order.length];save();
@@ -6691,6 +6884,20 @@ function youtubeConnectionState(conn){
      /reauth|expir|revok|invalid_grant|invalid grant|unauthori|forbidden|\b401\b|\b403\b|token|consent|access denied|needs login|login required/i.test(err))
     return 'reauth';
   return 'not';
+}
+// Shared connection-state derivation for TikTok / Instagram badges and the
+// Connection health card: connected (bot reports a live connection), reauth
+// (stored token expired/revoked), login (credentials configured, no account),
+// setup (nothing configured). "Connected" is NEVER derived from page load —
+// only from the bot-synced connection record.
+function socialConnectionState(conn){
+  conn=(conn&&typeof conn==='object')?conn:{};
+  if(conn.connected)return 'connected';
+  const err=String(conn.error||'');
+  if(/reauth|expir|revok|invalid_grant|invalid grant|unauthori|forbidden|\b401\b|\b403\b|token|consent|access denied|needs login|login required/i.test(err))return 'reauth';
+  if(conn.needsReauth)return 'reauth'; // bot explicitly flagged stale credentials
+  if(conn.configured)return 'login';
+  return 'setup';
 }
 const GDRIVE_ROOT_FOLDER_NAME='NappaVT Growth Hub Clips';
 // Drive resumable uploads require chunk sizes in multiples of 256 KiB
@@ -7589,10 +7796,10 @@ document.getElementById('addQueue').addEventListener('click',async()=>{
   if(!title){alert('Add a clip name first.');return}
   if(!platforms.length){alert('Choose at least one platform.');return}
 
-  // Advisor sessions are read-only: an uploaded file would vanish on the
-  // next sync. Block it clearly instead of losing someone's upload.
-  if(file&&!isOwner()){
-    showUploadStatus('Only the Owner account can upload clip videos. Advisors can still add posts without a video.','error');
+  // Advisor sessions are read-only: anything added here would silently
+  // vanish on the next sync. Say so instead of pretending it saved.
+  if(!isOwner()){
+    showUploadStatus('Advisor access is read-only. Only the Owner can add posts to the queue.','error');
     return;
   }
 
@@ -7606,6 +7813,16 @@ document.getElementById('addQueue').addEventListener('click',async()=>{
       alert(problem);
       return;
     }
+  }
+
+  // Duplicate protection: the same Twitch clip or the same video file should
+  // never silently land in the queue twice.
+  if(twitchSource){
+    const existing=(state.queue||[]).find(q=>q&&q.twitchClipId&&String(q.twitchClipId)===String(twitchSource.id)&&q.status!=='Posted');
+    if(existing&&!confirm(`“${existing.postTitle||existing.title||'This clip'}” already queues this Twitch clip (${existing.date||'no date'} ${existing.time||''}). Queue it again?`))return;
+  }else if(file){
+    const existing=(state.queue||[]).find(q=>q&&!q.videoDeleted&&q.videoName===file.name&&num(q.videoSize)===num(file.size));
+    if(existing&&!confirm(`“${existing.title||file.name}” with the same file name and size is already in the queue. Queue it again?`))return;
   }
 
   clearUploadStatus();
@@ -7762,18 +7979,56 @@ document.getElementById('qUploadCancel').addEventListener('click',()=>{
 });
 
 document.getElementById('requestTwitchRefresh').addEventListener('click',()=>{
+  const btn=document.getElementById('requestTwitchRefresh');
+  if(btn&&btn.disabled)return; // a request is already in flight
   state.twitchRefreshRequestedAt=new Date().toISOString();
   save();
-  const btn=document.getElementById('requestTwitchRefresh');
-  btn.textContent='Refresh requested…';
-  setTimeout(()=>{btn.textContent='↻ Refresh clips'},3000);
+  renderTwitchClips(); // re-derives the honest pending state from state
 });
+
+// The workspace reports in the owner's timezone (Nappa streams from NL).
+// Falls back to the browser locale if the runtime lacks tz data.
+const DASHBOARD_TIMEZONE='Europe/Amsterdam';
+function localeDateTime(d,opts){
+  try{return d.toLocaleString([],Object.assign({timeZone:DASHBOARD_TIMEZONE},opts))}
+  catch(e){return d.toLocaleString([],opts)}
+}
+function localeDate(d,opts){
+  try{return d.toLocaleDateString([],Object.assign({timeZone:DASHBOARD_TIMEZONE},opts))}
+  catch(e){return d.toLocaleDateString([],opts)}
+}
+function localeTime(d,opts){
+  try{return d.toLocaleTimeString([],Object.assign({timeZone:DASHBOARD_TIMEZONE},opts))}
+  catch(e){return d.toLocaleTimeString([],opts)}
+}
+function timeAgoLabel(value){
+  const t=typeof value==='number'?value:Date.parse(value||'');
+  if(!Number.isFinite(t))return '';
+  const diff=Date.now()-t;
+  if(diff<45000)return 'just now';
+  const m=Math.round(diff/60000);
+  if(m<60)return `${m} min ago`;
+  const h=Math.round(m/60);
+  if(h<48)return `${h} h ago`;
+  return `${Math.round(h/24)} d ago`;
+}
+// Honest background-operation state: pending only while the request is
+// younger than the response window; stale afterwards (retry is offered).
+const OP_PENDING_WINDOW_MS=15*60*1000;
+function operationState(requestedAt,completedAt){
+  const req=Date.parse(requestedAt||'')||0;
+  if(!req)return {state:'idle'};
+  const done=Date.parse(completedAt||'')||0;
+  if(done>=req)return {state:'done',at:completedAt};
+  if((Date.now()-req)<OP_PENDING_WINDOW_MS)return {state:'pending',at:requestedAt};
+  return {state:'stale',at:requestedAt};
+}
 
 function formatTwitchDate(value){
   if(!value)return '';
   const d=new Date(value);
   if(Number.isNaN(d.getTime()))return value;
-  return d.toLocaleString([],{
+  return localeDateTime(d,{
     day:'2-digit',month:'short',year:'numeric',
     hour:'2-digit',minute:'2-digit'
   });
@@ -7841,6 +8096,15 @@ function cleanPackagingTitle(value,max=96){
 }
 function titleKey(value){
   return normalizePackagingText(value).toLowerCase().replace(/[^a-z0-9]+/g,'');
+}
+// Stable content-derived id for a generated title option. Identical text
+// always yields the same id, so a selection survives rerenders, rotations and
+// cloud merges, and an index can never silently point at a different title.
+function packOptionId(title){
+  const s=String(title||'');
+  let h=0x811c9dc5;
+  for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,0x01000193)>>>0}
+  return 'o'+h.toString(36)+'_'+titleKey(s).slice(0,24);
 }
 function gameShortName(game){
   const clean=normalizePackagingText(game||'').trim();
@@ -8265,7 +8529,6 @@ function rotateArray(arr,amount){
 function buildNappaPackage(clip){
   const mode=clip.packageTone||'balanced';
   const variant=Math.max(0,Number(clip.packageVariant||0));
-  const selected=Math.max(0,Number(clip.packageSelectedIndex||0));
   const selectedTitleKey=titleKey(clip.packageSelectedTitle||'');
   const options=[];
 
@@ -8299,18 +8562,27 @@ function buildNappaPackage(clip){
   }
 
   unique=dedupeOptions(unique,clip).slice(0,6);
+  unique=unique.map(o=>({...o,id:packOptionId(o.title)}));
 
   const titles=unique.map(o=>o.title);
-  let resolvedSelectedIndex=selectedTitleKey
-    ? titles.findIndex(title=>titleKey(title)===selectedTitleKey)
-    : -1;
-  if(resolvedSelectedIndex<0){
-    resolvedSelectedIndex=Math.min(selected,Math.max(0,titles.length-1));
+  // Selection is content-addressed: only the stored title, still present in
+  // THIS exact list, counts as selected (exact string first, normalized key
+  // second). When nothing resolves, NO title is silently promoted to
+  // "selected" — the top-ranked row is only the suggested pick, so sorting,
+  // filtering, rerenders and regeneration can never display a selection the
+  // user did not make.
+  let resolvedSelectedIndex=-1;
+  if(selectedTitleKey){
+    resolvedSelectedIndex=unique.findIndex(o=>o.title===clip.packageSelectedTitle);
+    if(resolvedSelectedIndex<0){
+      resolvedSelectedIndex=titles.findIndex(title=>titleKey(title)===selectedTitleKey);
+    }
   }
   return {
     titles,
     options:unique,
     selectedIndex:resolvedSelectedIndex,
+    suggestedIndex:unique.length?0:-1,
     caption:packageCaption(clip,mode),
     tags:packageTags(clip),
     tone:mode,
@@ -8320,9 +8592,12 @@ function buildNappaPackage(clip){
 }
 function currentNappaPackageChoice(clip){
   const pack=buildNappaPackage(clip);
+  const explicit=pack.selectedIndex>=0;
+  const shownIndex=explicit?pack.selectedIndex:pack.suggestedIndex;
   return {
     ...pack,
-    title:pack.titles[pack.selectedIndex]||pack.titles[0]||clip.title||''
+    explicit,
+    title:(shownIndex>=0?pack.titles[shownIndex]:'')||clip.title||''
   };
 }
 function persistClipPackagePrefs(clip){
@@ -8355,29 +8630,56 @@ async function copyNappaField(id,field,button){
     setTimeout(()=>button.textContent=old,1200);
   }
 }
-function selectNappaTitle(id,index){
-  const clip=state.twitchClips.find(c=>String(c.id)===String(id));if(!clip)return;
+// Snapshot of the exact option list each clip card was rendered with.
+// Clicks resolve against THIS snapshot — never against a rebuilt candidate
+// list — so a rerender, rotation or cloud merge between paint and click can
+// never shift a click onto a different title.
+const packRenderCache=new Map();
+function resolvePackOptionClick(clip,optionKey){
+  const rendered=packRenderCache.get(String(clip&&clip.id))||[];
+  const hit=rendered.find(o=>String(o.id)===String(optionKey));
+  if(hit&&hit.title)return hit;
+  // Backward-compatible fallback: numeric keys mean an old index-based click
+  // target; resolve it against the current list.
   const pack=buildNappaPackage(clip);
-  const selectedIndex=Math.max(0,Number(index||0));
-  const title=pack.titles[selectedIndex]||'';
-  if(!title)return;
-  clip.packageSelectedIndex=selectedIndex;
-  clip.packageSelectedTitle=title;
+  const idx=Number(optionKey);
+  if(String(optionKey||'').trim()!==''&&Number.isFinite(idx)&&idx>=0&&pack.options[idx])return pack.options[idx];
+  return pack.options.find(o=>String(o.id)===String(optionKey))||null;
+}
+function syncClipPackageIndex(clip){
+  // Keep the legacy numeric index consistent with the authoritative
+  // content-based selection (consumers such as the bot may still read it).
+  const pack=buildNappaPackage(clip);
+  clip.packageSelectedIndex=pack.selectedIndex>=0?pack.selectedIndex:0;
+  return pack;
+}
+function selectNappaTitle(id,optionKey){
+  const clip=state.twitchClips.find(c=>String(c.id)===String(id));if(!clip)return;
+  const opt=resolvePackOptionClick(clip,optionKey);
+  if(!opt||!opt.title)return;
+  clip.packageSelectedTitle=opt.title; // exact title text as displayed
+  syncClipPackageIndex(clip);
   persistClipPackagePrefs(clip);
   renderTwitchClips();
 }
-function rejectNappaTitle(id,index){
+function rejectNappaTitle(id,optionKey){
   const clip=state.twitchClips.find(c=>String(c.id)===String(id));if(!clip)return;
-  const pack=buildNappaPackage(clip);
-  const title=pack.titles[Math.max(0,Number(index||0))];
-  if(!title)return;
+  const opt=resolvePackOptionClick(clip,optionKey);
+  if(!opt||!opt.title)return;
+  const title=opt.title;
   if(!Array.isArray(clip.packageRejectedTitles))clip.packageRejectedTitles=[];
   if(!clip.packageRejectedTitles.some(t=>titleKey(t)===titleKey(title))){
     clip.packageRejectedTitles.push(title);
   }
   clip.packageVariant=Number(clip.packageVariant||0)+1;
-  clip.packageSelectedIndex=0;
-  clip.packageSelectedTitle='';
+  // Only drop the stored selection when the rejected title IS the selection;
+  // any other selection simply re-resolves by content in the new list.
+  if(titleKey(clip.packageSelectedTitle||'')===titleKey(title)){
+    clip.packageSelectedTitle='';
+    clip.packageSelectedIndex=0;
+  }else{
+    syncClipPackageIndex(clip);
+  }
   persistClipPackagePrefs(clip);
   renderTwitchClips();
 }
@@ -8385,8 +8687,9 @@ function applyNappaContext(id,value){
   const clip=state.twitchClips.find(c=>String(c.id)===String(id));if(!clip)return;
   clip.packageUserContext=String(value||'').trim();
   clip.packageVariant=Number(clip.packageVariant||0)+1;
-  clip.packageSelectedIndex=0;
-  clip.packageSelectedTitle='';
+  // Never silently re-select the first option: the previous selection only
+  // survives if that exact title still exists in the regenerated list.
+  syncClipPackageIndex(clip);
   persistClipPackagePrefs(clip);
   renderTwitchClips();
 }
@@ -8395,14 +8698,14 @@ function changeNappaPackage(id,action){
   const modes=['balanced','words','context','unhinged','deadpan','short','bread'];
   if(action==='new'){
     clip.packageVariant=Number(clip.packageVariant||0)+1;
-    clip.packageSelectedIndex=0;
-  clip.packageSelectedTitle='';
   }else if(modes.includes(action)){
     clip.packageTone=action;
     clip.packageVariant=Number(clip.packageVariant||0)+1;
-    clip.packageSelectedIndex=0;
-  clip.packageSelectedTitle='';
+  }else{
+    return;
   }
+  // Content-addressed re-resolution instead of "select the new first title".
+  syncClipPackageIndex(clip);
   persistClipPackagePrefs(clip);
   renderTwitchClips();
 }
@@ -8466,9 +8769,33 @@ function renderTwitchClips(){
     connectNote.style.display='';
   }
 
+  // Honest refresh-request state: the flag is stored in cloud state, so a
+  // reload neither fakes success nor loses a request that is still waiting.
+  const refreshBtn=document.getElementById('requestTwitchRefresh');
+  if(refreshBtn){
+    const op=operationState(state.twitchRefreshRequestedAt,status.lastSyncAt);
+    refreshBtn.disabled=op.state==='pending';
+    refreshBtn.textContent=
+      op.state==='pending'?'Refresh requested…':
+      op.state==='stale'?'↻ Retry refresh request':'↻ Refresh clips';
+    refreshBtn.title=
+      op.state==='pending'?`Requested ${timeAgoLabel(op.at)} — waiting for Nappa Bot to pick it up`:
+      op.state==='stale'?`Requested ${timeAgoLabel(op.at)} — no response yet; Nappa Bot may be offline`:
+      op.state==='done'?`Completed ${formatTwitchDate(op.at)}`:'';
+    if(op.state==='pending')statusCopy.textContent+=` · refresh requested ${timeAgoLabel(op.at)} (waiting for Nappa Bot)`;
+    if(op.state==='stale')statusCopy.textContent+=` · refresh requested ${timeAgoLabel(op.at)} got no response — try again or check that Nappa Bot is online`;
+  }
+
   const clips=[...(state.twitchClips||[])].sort(
     (a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))
   );
+  // Drop render snapshots of clips that no longer exist.
+  {
+    const live=new Set(clips.map(c=>String(c.id)));
+    for(const key of packRenderCache.keys()){
+      if(!live.has(key))packRenderCache.delete(key);
+    }
+  }
 
   if(!clips.length){
     root.innerHTML=`<div class="empty" style="grid-column:1/-1">${
@@ -8485,9 +8812,14 @@ function renderTwitchClips(){
     card.className='twitch-card';
 
     const pack=currentNappaPackageChoice(c);
-    const selectedOption=pack.options?.[pack.selectedIndex]||{
-      title:pack.title,angle:'Selected',reason:''
-    };
+    // Remember exactly which options this card shows so clicks and reject
+    // actions resolve by stable option id, never by rebuilding the list.
+    packRenderCache.set(String(c.id),(pack.options||[]).map(o=>({
+      id:o.id,title:o.title,angle:o.angle,reason:o.reason
+    })));
+    const selectedOption=(pack.selectedIndex>=0?pack.options?.[pack.selectedIndex]:null)
+      ||pack.options?.[pack.suggestedIndex]
+      ||{title:pack.title,angle:'Suggestion',reason:''};
     const hasHistory=pack.history.total>0;
     const contextLabel=pack.richContext
       ? 'Transcript / moment context ready'
@@ -8499,17 +8831,21 @@ function renderTwitchClips(){
       ? `<img class="twitch-thumb" src="${esc(c.thumbnailUrl)}" alt="${esc(c.title||'Twitch clip preview')}">`
       : `<div class="twitch-preview-empty">NO PREVIEW</div>`;
 
-    const options=(pack.options||[]).map((option,index)=>`
-      <button class="nappa-title-option ${index===pack.selectedIndex?'selected':''}"
-              data-pack-select="${index}" data-pack-id="${esc(c.id)}">
+    const options=(pack.options||[]).map((option,index)=>{
+      const isSelected=index===pack.selectedIndex;
+      const isSuggested=!isSelected&&pack.selectedIndex<0&&index===pack.suggestedIndex;
+      const badge=isSelected?'SELECTED':isSuggested?'TOP PICK':String(index+1).padStart(2,'0');
+      return `
+      <button class="nappa-title-option ${isSelected?'selected':''}${isSuggested?' suggested':''}"
+              data-pack-opt="${esc(option.id)}" data-pack-id="${esc(c.id)}">
         <span class="nappa-title-angle">
           <span>${esc(option.angle||'Angle')}</span>
-          <span>${index===pack.selectedIndex?'SELECTED':String(index+1).padStart(2,'0')}</span>
+          <span>${badge}</span>
         </span>
         <span class="nappa-title-copy">${esc(option.title)}</span>
         ${option.reason?`<span class="nappa-title-reason">${esc(option.reason)}</span>`:''}
-      </button>
-    `).join('');
+      </button>`;
+    }).join('');
 
     card.innerHTML=`
       <div class="twitch-media-pane">
@@ -8582,7 +8918,7 @@ function renderTwitchClips(){
 
             <div class="nappa-selected-package">
               <div class="nappa-selected-main">
-                <div class="nappa-selected-label">${esc(selectedOption.angle||'Selected package')}</div>
+                <div class="nappa-selected-label">${pack.explicit?esc(selectedOption.angle||'Selected package'):'TOP SUGGESTION — CLICK A TITLE TO LOCK IT IN'}</div>
                 <div class="nappa-pack-suggestion-title">${esc(pack.title)}</div>
                 <div class="nappa-pack-caption">${esc(pack.caption)}</div>
                 <div class="nappa-pack-tags">${esc(pack.tags)}</div>
@@ -8594,7 +8930,7 @@ function renderTwitchClips(){
                   <button class="btn secondary" data-copy-pack="caption" data-pack-id="${esc(c.id)}">Copy caption</button>
                   <button class="btn secondary" data-copy-pack="tags" data-pack-id="${esc(c.id)}">Copy tags</button>
                   <button class="btn secondary" data-copy-pack="all" data-pack-id="${esc(c.id)}">Copy all</button>
-                  <button class="btn secondary nappa-reject" data-pack-reject="${pack.selectedIndex}" data-pack-id="${esc(c.id)}">Not this vibe</button>
+                  <button class="btn secondary nappa-reject" data-pack-reject="${esc(selectedOption.id||'')}" data-pack-id="${esc(c.id)}">Not this vibe</button>
                 </div>
               </div>
             </div>
@@ -8633,8 +8969,8 @@ function renderTwitchClips(){
   root.querySelectorAll('[data-pack-action]').forEach(btn=>btn.addEventListener('click',()=>{
     changeNappaPackage(btn.dataset.packId,btn.dataset.packAction);
   }));
-  root.querySelectorAll('[data-pack-select]').forEach(btn=>btn.addEventListener('click',()=>{
-    selectNappaTitle(btn.dataset.packId,btn.dataset.packSelect);
+  root.querySelectorAll('[data-pack-opt]').forEach(btn=>btn.addEventListener('click',()=>{
+    selectNappaTitle(btn.dataset.packId,btn.dataset.packOpt);
   }));
   root.querySelectorAll('[data-pack-reject]').forEach(btn=>btn.addEventListener('click',()=>{
     rejectNappaTitle(btn.dataset.packId,btn.dataset.packReject);
@@ -8643,7 +8979,7 @@ function renderTwitchClips(){
     copyNappaField(btn.dataset.packId,btn.dataset.copyPack,btn);
   }));
   root.querySelectorAll('[data-apply-pack-context]').forEach(btn=>btn.addEventListener('click',()=>{
-    const input=root.querySelector(`[data-pack-context-input="${CSS.escape(String(btn.dataset.applyPackContext))}"]`);
+    const input=root.querySelector(`[data-pack-context-input="${cssEscape(String(btn.dataset.applyPackContext))}"]`);
     applyNappaContext(btn.dataset.applyPackContext,input?.value||'');
   }));
   root.querySelectorAll('[data-clear-pack-context]').forEach(btn=>btn.addEventListener('click',()=>{
@@ -8739,11 +9075,12 @@ function renderQueue(){
 
   root.querySelectorAll('[data-post]').forEach(btn=>btn.addEventListener('click',()=>{
     const q=state.queue.find(x=>x.id==btn.dataset.post);
-    if(q){
-      q.status='Posted';
-      q.postedAt=new Date().toISOString();
-      save();
-    }
+    if(!q||q.status==='Posted')return; // idempotent: never re-post
+    if(!confirm('Mark this post as Posted? Nappa Bot treats this as the final posting state.'))return;
+    btn.disabled=true; // the rerender replaces this button anyway
+    q.status='Posted';
+    q.postedAt=new Date().toISOString();
+    save();
   }));
 
   root.querySelectorAll('[data-del-q]').forEach(btn=>btn.addEventListener('click',async()=>{
@@ -8837,9 +9174,13 @@ function renderContentPerformance(){
   const igBadge=document.getElementById('instagramConnectionBadge');
   if(!ytBadge||!ttBadge||!igBadge)return;
 
+  // Expiry-aware badge: an integration only shows "Connected" when the bot
+  // really reports a working connection; auth-expired tokens surface as
+  // "Needs reconnect" instead of silently looking fine.
   const applyBadge=(el,connection)=>{
-    el.textContent=connection.connected?'Connected':connection.configured?'Needs login':'Needs setup';
-    el.className='status '+(connection.connected?'s-ready':connection.configured?'s-edit':'');
+    const s=socialConnectionState(connection);
+    el.textContent=s==='connected'?'Connected':s==='reauth'?'Needs reconnect':s==='login'?'Needs login':'Needs setup';
+    el.className='status '+(s==='connected'?'s-ready':(s==='reauth'||s==='login')?'s-edit':'');
   };
   // YOUTUBE is an INDEPENDENT Google connection (Craftnode backend OAuth:
   // youtube.readonly + yt-analytics.readonly ONLY — never drive.file).
@@ -8888,13 +9229,29 @@ function renderContentPerformance(){
   document.getElementById('socialMatchedPosts').textContent=fmt(matches);
 
   const sync=state.socialSyncStatus||{};
+  const socialOp=operationState(state.socialRefreshRequestedAt,sync.lastSyncAt);
+  const socialRefreshBtn=document.getElementById('requestSocialRefresh');
+  if(socialRefreshBtn){
+    socialRefreshBtn.disabled=Boolean(sync.running)||socialOp.state==='pending';
+    socialRefreshBtn.textContent=sync.running
+      ?'Refreshing…'
+      :socialOp.state==='pending'
+        ?'Refresh requested…'
+        :socialOp.state==='stale'
+          ?'↻ Retry analytics refresh'
+          :'↻ Refresh analytics';
+  }
   document.getElementById('socialSyncCopy').textContent=sync.running
     ?'Refreshing social analytics now…'
     :sync.error
       ?`Last refresh had an issue: ${sync.error}`
-      :sync.lastSyncAt
-        ?`Automatic background analytics · last refresh ${formatTwitchDate(sync.lastSyncAt)}`
-        :'Automatic analytics starts after you connect YouTube, TikTok or Instagram.';
+      :socialOp.state==='pending'
+        ?`Refresh requested ${timeAgoLabel(socialOp.at)} · waiting for Nappa Bot to pick it up.`
+        :socialOp.state==='stale'
+          ?`Refresh requested ${timeAgoLabel(socialOp.at)} got no response — Nappa Bot may be offline. Use retry or check Craftnode.`
+          :sync.lastSyncAt
+            ?`Automatic background analytics · last refresh ${formatTwitchDate(sync.lastSyncAt)}`
+            :'Automatic analytics starts after you connect YouTube, TikTok or Instagram.';
 
   const root=document.getElementById('contentPerformanceCards');
   const candidates=(state.queue||[]).filter(q=>
@@ -8969,8 +9326,12 @@ function renderContentPerformance(){
 }
 
 document.getElementById('requestSocialRefresh').addEventListener('click',()=>{
-  state.socialRefreshRequested=true;save();
-  document.getElementById('socialSyncCopy').textContent='Refresh requested · Nappa Bot will process it on the next worker check.';
+  const btn=document.getElementById('requestSocialRefresh');
+  if(btn&&btn.disabled)return; // already running or waiting on the bot
+  state.socialRefreshRequested=true;
+  state.socialRefreshRequestedAt=new Date().toISOString();
+  save();
+  renderContentPerformance();
 });
 
 function chart(rootId,data){
@@ -9132,8 +9493,89 @@ function renderOverviewSnapshot(){
   }));
 }
 
+function connHealthRow(name,tone,label,action=''){
+  return `<div class="conn-health-item"><div class="conn-health-head"><span class="conn-dot ${tone}"></span><b>${esc(name)}</b></div><div class="conn-health-label">${esc(label)}</div>${action?`<div class="conn-health-action">${esc(action)}</div>`:''}</div>`;
+}
+// Honest, consolidated integration health. Every row derives from real
+// signals (bot-synced status records, actual sync results, live Drive token
+// state) — nothing reports healthy just because the dashboard loaded.
+function renderConnectionHealth(){
+  const root=document.getElementById('connectionHealth');
+  if(!root)return;
+  const rows=[];
+
+  // Supabase cloud sync.
+  if(!currentUser){
+    rows.push(connHealthRow('Supabase cloud','bad','Signed out — sync is off.','Sign in to restore cloud sync.'));
+  }else if(cloudLoadFallback){
+    rows.push(connHealthRow('Supabase cloud','warn','Unreachable · using this device’s saved copy.','Changes sync automatically when the cloud recovers.'));
+  }else if(lastCloudSaveError){
+    rows.push(connHealthRow('Supabase cloud','bad','Last save failed: '+String(lastCloudSaveError.message||lastCloudSaveError).slice(0,90),'Edits stay queued locally and retry automatically.'));
+  }else{
+    rows.push(connHealthRow('Supabase cloud','good',lastSuccessfulSyncAt?('Synced · last success '+timeAgoLabel(lastSuccessfulSyncAt)):'Connected.'));
+  }
+
+  // Nappa Bot / Craftnode worker — inferred from the freshest bot-written
+  // data, never from the dashboard having loaded.
+  const botStamps=[
+    state.twitchStatus?.lastSyncAt,
+    state.socialSyncStatus?.lastSyncAt,
+    state.twitchHistoryStatus?.lastSyncAt
+  ].map(v=>Date.parse(v||'')||0).filter(Boolean);
+  const botLast=botStamps.length?Math.max(...botStamps):0;
+  const botAge=botLast?Date.now()-botLast:Infinity;
+  rows.push(connHealthRow('Nappa Bot · Craftnode',
+    !botLast?'mute':botAge<90*60000?'good':botAge<36*3600000?'warn':'bad',
+    !botLast?'No data synced by the bot yet.':('Last bot data '+timeAgoLabel(botLast)+'.'),
+    !botLast?'The bot checks in after its first Twitch/social sync.':botAge<90*60000?'':botAge<36*3600000?'No fresh bot data in the last 90 minutes.':'Craftnode worker may be offline — check it in Discord.'));
+
+  // Twitch connection (clips + EventSub telemetry).
+  const tw=state.twitchStatus||{};
+  const ts=state.streamTrackingStatus||{};
+  if(tw.connected){
+    const parts=[`Connected as ${tw.login||'Twitch'}`];
+    if(tw.lastSyncAt)parts.push('clips synced '+timeAgoLabel(tw.lastSyncAt));
+    parts.push(ts.eventsubConnected?'EventSub connected':'EventSub reconnecting');
+    rows.push(connHealthRow('Twitch','good',parts.join(' · ')));
+  }else{
+    rows.push(connHealthRow('Twitch','bad',tw.error||'Not connected yet.','Run /twitchclips_connect in Discord.'));
+  }
+
+  // Google Drive (browser-side upload token — live, in-memory state).
+  const driveTone=gdriveConnState==='connected'?'good':gdriveConnState==='reauth'?'warn':gdriveConnState==='connecting'?'warn':'mute';
+  rows.push(connHealthRow('Google Drive · clips',driveTone,
+    gdriveConnState==='connected'?'Connected · uploads go to the private clips folder.':
+    gdriveConnState==='reauth'?'Authorization expired.':
+    gdriveConnState==='connecting'?'Checking connection…':
+    'Not connected on this device.',
+    gdriveConnState==='reauth'?'Click “Reconnect Google Drive” in the queue page.':gdriveConnState==='not'?'Connect only if you upload clips here; Twitch clips need nothing.':''));
+
+  // Social analytics connections.
+  const socialMeta=[
+    ['YouTube',state.socialConnections?.youtube,'/youtube_connect'],
+    ['TikTok',state.socialConnections?.tiktok,'/tiktok_connect'],
+    ['Instagram',state.socialConnections?.instagram,'/instagram_connect']
+  ];
+  for(const [name,conn,cmd] of socialMeta){
+    const s=socialConnectionState(conn);
+    rows.push(connHealthRow(name,
+      s==='connected'?'good':s==='reauth'?'warn':'mute',
+      s==='connected'
+        ?`${(conn.channelTitle||conn.displayName||conn.username||'Connected')} · ${conn.videos||0} recent posts synced.`
+        :s==='reauth'
+          ?(conn.error||'Authorization expired.')
+          :s==='login'
+            ?'Configured on Craftnode · not linked to an account.'
+            :'Not configured.',
+      s==='connected'?'':s==='setup'?`Set credentials on Craftnode, then run ${cmd}.`:`Reconnect with ${cmd} → ${cmd}_finish in Discord.`));
+  }
+
+  root.innerHTML=rows.join('');
+}
+
 function renderDashboard(){
   renderOverviewSnapshot();
+  renderConnectionHealth();
   const posted=state.clips.filter(c=>c.status==='Posted');
   document.getElementById('kStreams').textContent=fmt(state.streams.length);
   document.getElementById('kClips').textContent=fmt(state.clips.length);
@@ -9166,9 +9608,12 @@ function csvDownload(name,rows){
   a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 document.getElementById('importTwitchHistory').addEventListener('click',()=>{
+  const btn=document.getElementById('importTwitchHistory');
+  if(btn&&btn.disabled)return; // an import request is already in flight
   state.twitchHistoryImportRequested=true;
+  state.twitchHistoryImportRequestedAt=new Date().toISOString();
   save();
-  document.getElementById('twitchHistoryStatus').textContent='Import requested · Nappa Bot will process it on the next worker check.';
+  renderStreamLibrary();
 });
 
 document.getElementById('exportStreams').addEventListener('click',()=>csvDownload('NappaVT_Streams.csv',[
@@ -9286,7 +9731,7 @@ setTimeout(()=>{try{gdriveSilentReconnect()}catch(e){}},600);
     results.querySelector('.command-item.active')?.scrollIntoView({block:'nearest'});
   }
   function openPage(page){
-    const b=document.querySelector(`.nav button[data-page="${CSS.escape(page)}"]`);
+    const b=[...document.querySelectorAll('.nav button[data-page]')].find(x=>x.dataset.page===page);
     if(b){b.click();close();setTimeout(updateContext,0);}
   }
   function open(){palette.hidden=false;activeIndex=0;input.value='';render();requestAnimationFrame(()=>input.focus())}
@@ -9333,7 +9778,7 @@ setTimeout(()=>{try{gdriveSilentReconnect()}catch(e){}},600);
   function render(){
     const active=document.querySelector('.nav button[data-page].active')?.dataset.page;
     grid.innerHTML=eligible().map(b=>`<button class="mobile-more-item ${b.dataset.page===active?'active':''}" type="button" data-mobile-page="${esc(b.dataset.page)}"><span class="nav-icon">${b.querySelector('.nav-icon')?.innerHTML||''}</span><span><b>${esc(b.textContent.trim())}</b><small>${esc(groupFor(b))}</small></span></button>`).join('');
-    grid.querySelectorAll('[data-mobile-page]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelector(`.nav button[data-page="${CSS.escape(btn.dataset.mobilePage)}"]`)?.click();hide()}));
+    grid.querySelectorAll('[data-mobile-page]').forEach(btn=>btn.addEventListener('click',()=>{[...document.querySelectorAll('.nav button[data-page]')].find(x=>x.dataset.page===btn.dataset.mobilePage)?.click();hide()}));
   }
   function show(){render();sheet.hidden=false;requestAnimationFrame(()=>grid.querySelector('button')?.focus())}
   function hide(){sheet.hidden=true;more.focus();setTimeout(updateMoreState,0)}
@@ -9377,17 +9822,6 @@ setTimeout(()=>{try{gdriveSilentReconnect()}catch(e){}},600);
   const shell=document.getElementById('dashboardShell');
   if(shell){
     const observer=new MutationObserver(repairControlRoomShell);
-    observer.observe(shell,{attributes:true,attributeFilter:['class','style']});
-  }
-
-  // Expose only for diagnostics if needed.
-  window.repairControlRoomShell=repairControlRoomShell;
-})();
-</script>
-
-</body>
-</html>
-ionObserver(repairControlRoomShell);
     observer.observe(shell,{attributes:true,attributeFilter:['class','style']});
   }
 

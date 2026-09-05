@@ -4,6 +4,11 @@ Prepared alongside **feature: Google Drive large-clip storage** (PR #1).
 Every issue found during the audits is listed here. "Fixed in this PR" = YES
 only when the fix landed on this PR branch.
 
+> **Follow-up (this branch, “title system + reliability” pass):** BUG-001,
+> BUG-002 (remainder), BUG-003, BUG-004, BUG-005 and BUG-010 are now FIXED —
+> see the appended section at the bottom for root causes, fixes and the
+> regressions suite (`.test/titles.test.js`, `.test/twitch.test.js`).
+
 ---
 
 ## Bugs
@@ -165,3 +170,117 @@ Additional Drive-specific guarantees implemented in this PR:
 - No Google Client Secret exists anywhere in the repo or the browser flow (GIS token client only).
 - Drive files are created **private**; no `permissions.create` / link-sharing calls exist in the code.
 - Only the narrow `https://www.googleapis.com/auth/drive.file` scope is requested.
+
+---
+
+# Follow-up fixes — title system + reliability pass (this branch)
+
+## BUG-001 → FIXED (title selection reverting to the first/"prefix" title)
+**Root cause:** `writeCloudStateNow()` runs a pre-save merge, and
+`mergeBotTwitchFields()` treated the entire `twitchClips` array as bot-owned:
+if the remote array differed from local in **any** way — which it always did
+the moment the user made a selection, because the cloud did not have that
+selection yet — the whole local array was replaced with the stale remote copy
+and then persisted. Every title selection therefore reverted on the very next
+save (~500 ms debounce), falling back to `packageSelectedIndex` (usually 0),
+i.e. the first/top-ranked title.
+**Fix:** per-clip, field-aware merge. Bot-owned import metadata (title, URLs,
+thumbnails, stats) and clip membership stay remote-authoritative; owner
+packaging fields (`packageTone`, `packageVariant`, `packageSelectedIndex`,
+`packageSelectedTitle`, `packageRejectedTitles`, `packageUserContext`,
+`packageLastTitle`, `packageLastUsedAt`) are taken from whichever side used
+packaging more recently (`packageLastUsedAt`). Regression: `.test/titles.test.js`
+scenario 8 (bot write during pending save, stale remote, newer remote).
+
+## BUG-002 (remainder) → FIXED
+Advisor (read-only) could add a no-video queue post that appeared then
+silently vanished on the next sync. The queue add handler now refuses
+non-owner submissions with a clear read-only message.
+
+## BUG-003 → FIXED
+`createAdvisorInvite()` double-click produced duplicate invites. The button is
+now disabled while the insert resolves (same pattern as the login form).
+
+## BUG-004 → FIXED
+Clip-log delete (`data-del-clip`) had no confirmation; it now asks first,
+consistent with queue/stream deletion.
+
+## BUG-005 → FIXED
+`writeCloudStateNow()` sent the live `state` reference; it now persists a
+frozen `JSON.parse(JSON.stringify(state))` snapshot.
+
+## BUG-010 → FIXED
+`submitAdvisorNote()` lacked a busy guard (duplicate feedback on double
+submit). Now disabled while sending. (Note: `addStream`/`addClip` were already
+protected — they clear their required fields synchronously, so a second click
+fails validation instead of duplicating.)
+
+## New findings fixed on this branch
+
+### BUG-012 — Title click could select a DIFFERENT title (index instability)
+**Severity:** HIGH. Generated titles were bound to clicks by array index
+(`data-pack-select="${index}"`) and the candidate list was rebuilt at click
+time from live state. Because scoring depends on queue state
+(`previousChosenTitles`/`preferredTitleStyle`), any queue/social update
+between render and click re-ordered the list, so the clicked index resolved
+to a different title than the one displayed.
+**Fix:** every generated option gets a stable, content-derived id
+(`packOptionId`, FNV-1a over the exact title + normalized key). Clicks resolve
+against a per-render snapshot (`packRenderCache`) of the exact displayed
+options. Selection is stored as the exact title text and re-resolved by exact
+string match (normalized key as fallback) — never by index. Index is still
+written for backward consumers but never used to re-resolve.
+
+### BUG-013 — Silent "first title selected" behavior
+**Severity:** MEDIUM. When no stored selection existed (or it no longer
+matched), the package builder fell back to `Math.min(packageSelectedIndex, …)`
+and marked an unchosen title as SELECTED — including after regeneration, which
+reset the index to 0.
+**Fix:** selection is strictly content-addressed. With no valid stored
+selection, no card shows SELECTED; the top-ranked row is badged "TOP PICK"
+(dashed style) and the panel reads "TOP SUGGESTION — CLICK A TITLE TO LOCK IT
+IN". Regenerating/rejecting only clears the selection when the chosen title
+itself is rejected/disappears; otherwise it survives at its new position.
+
+### BUG-014 — Cloud recovery could clobber offline edits
+**Severity:** MEDIUM. `scheduleCloudRecovery()` restored cloud state wholesale
+once the cloud became reachable, discarding unsynced local edits made during
+the outage.
+**Fix:** when the owner has unsynced edits at recovery time, the dashboard
+pushes them up first instead of restoring the older cloud copy.
+
+### BUG-015 — `CSS.escape` missing fallback threw inside handlers
+**Severity:** LOW/MEDIUM. The "Apply context" handler (and the command
+palette / mobile "More" navigation) called `CSS.escape`, which throws in
+environments lacking the CSSOM API and aborts the whole interaction.
+**Fix:** `cssEscape()` helper with a regex fallback; palette/mobile navigation
+no longer depend on it.
+
+### BUG-016 — Mark posted was not idempotent
+**Severity:** LOW. Re-clicking "Mark posted" re-stamped `postedAt`.
+**Fix:** no-op when already Posted + confirmation before marking; button
+disabled on click. Duplicate queue protection added (same Twitch clip or same
+file name+size asks before queuing again).
+
+### BUG-017 — Corrupted HTML tail
+**Severity:** LOW (hygiene). A duplicated script fragment and second
+`</body></html>` existed after the closing document tag. Removed.
+
+## Improvements shipped on this branch
+- **Honest background-operation status** for clips refresh, Twitch history
+  import and social analytics refresh: `requested → pending (button disabled,
+  no double-submit) → done/stale (retry offered after 15 min without bot
+  response)`. Derived from stored flags + bot sync timestamps, so a reload
+  never fakes success or loses a pending request.
+- **Connection health card** on the Overview: Supabase cloud (last successful
+  sync / failure), Nappa Bot·Craftnode (freshest bot data), Twitch (clips +
+  EventSub), Google Drive (live token state), YouTube/TikTok/Instagram
+  (bot-synced connection records, expiry-aware "Needs reconnect"). Nothing
+  reports healthy just because the dashboard loaded.
+- **Stream library:** sort control (newest/avg/peak/duration/chatters/follows,
+  render-order only), Returning + Clips metrics with explicit "—" for
+  unavailable values, Europe/Amsterdam timestamps via shared locale helpers
+  with graceful fallback, and stream reports now list clips from the stream
+  window plus connected social posts (derived from real `twitchClipId` links).
+- **Twitch regression coverage:** `.test/twitch.test.js` (live status,
+  EventSub, clips, refresh, duplicates, expiry display, history).
