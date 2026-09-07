@@ -2031,10 +2031,19 @@ label{margin:10px 0 5px!important;color:var(--cr-dim)!important;font:500 8px/1.3
 
 <style id="control-room-6-mobile-polish">
 .command-trigger-icon{display:none;width:16px;height:16px;color:var(--cr-muted)}
+/* Desktop "More" sidebar expander is hidden on mobile (bottom sheet covers it).
+   [hidden] must beat the !important rules so role logic can always hide it. */
+@media(min-width:901px){#moreNavGroup,#moreItemsGroup{display:block!important}.nav #moreToggle{display:block!important}}
+#moreNavGroup[hidden],#moreItemsGroup[hidden]{display:none!important}
+/* #hiddenPagesShelf is only the canonical home for the secondary page buttons
+   (role logic + the mobile sheet still discover them there); it is never shown. */
+#hiddenPagesShelf{display:none!important}
 .nav .mobile-more-trigger,.mobile-more-backdrop{display:none!important}
+.nav .mobile-more-trigger{display:none}
 @media(max-width:900px){
   .command-trigger-icon{display:block}.command-trigger kbd{display:none!important}.command-trigger{width:34px!important;padding:0!important;justify-content:center!important}.command-trigger-label{display:none!important}
-  .nav button[data-page]:not([data-page="dashboard"]):not([data-page="twitchclips"]):not([data-page="queue"]):not([data-page="streams"]){display:none!important}
+  .nav button[data-page]:not([data-page="dashboard"]):not([data-page="twitchclips"]):not([data-page="queue"]):not([data-page="contentperformance"]):not([data-page="streams"]):not([data-page="analytics"]):not([data-page="settings"]){display:none!important}
+  .nav #moreNavGroup{display:none!important}
   .nav .mobile-more-trigger{display:flex!important;flex:0 0 72px!important;width:72px!important;min-height:54px!important;margin:0!important;padding:5px 4px!important;flex-direction:column!important;justify-content:center!important;align-items:center!important;gap:4px!important;border:0!important;border-radius:4px!important;background:transparent!important;color:#8c8f96!important;font-size:8px!important;font-weight:520!important;white-space:nowrap!important}
   .nav .mobile-more-trigger:hover,.nav .mobile-more-trigger.active{background:var(--cr-surface-2)!important;color:var(--cr-text)!important}.nav .mobile-more-trigger.active .nav-icon{color:var(--cr-accent)!important}
   .mobile-more-backdrop[hidden]{display:none!important}.mobile-more-backdrop{position:fixed;inset:0;z-index:990;display:flex;align-items:flex-end;background:rgba(0,0,0,.58);backdrop-filter:blur(3px)}
@@ -2894,6 +2903,127 @@ details.manual-stream-entry summary b{font-size:12.5px!important}
   text-align:left!important;
 }
 .glance-action:disabled{opacity:.55!important;cursor:default!important;text-decoration:none!important}
+
+/* "More" expander inside the desktop sidebar + the hidden items group it
+   reveals. The toggle button reuses the sidebar's regular nav-button chrome. */
+#moreToggle{color:var(--cr-dim)}
+#moreItemsGroup{padding-top:2px}
+@media(max-width:900px){
+  #moreNavGroup{display:none!important}
+  #moreItemsGroup{display:none!important}
+}
+
+/* ==========================================================================
+   6.5 decluttered Overview — content-first dashboard
+   Layout + fold styling for the redesigned home page. Content blocks stay
+   front and center; plan/routine, momentum/metrics and integration health
+   tuck away behind collapsed card-details so nothing is lost, only tidier.
+   ========================================================================== */
+.dash-upcoming,.dash-recent{display:flex;flex-direction:column;min-height:0!important}
+.dash-upcoming .btn.secondary,.dash-recent .btn.secondary{flex:0 0 auto}
+.quick-actions{display:flex;flex-wrap:wrap;gap:8px}
+.quick-actions .btn{min-height:32px!important}
+#dashUpcomingList,#dashRecentList{margin-top:12px!important;display:grid;gap:8px}
+.dash-post-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto auto auto;
+  gap:12px;
+  align-items:center;
+  padding:10px 11px;
+  border:1px solid var(--cr-line);
+  border-radius:5px;
+  background:var(--cr-sidebar);
+}
+.dash-post-row:hover{border-color:#3a3d45}
+.dash-post-main{min-width:0}
+.dash-post-title{
+  overflow:hidden;
+  color:var(--cr-text);
+  font-size:12px;
+  font-weight:620;
+  line-height:1.35;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.dash-post-views{text-align:right;white-space:nowrap}
+.dash-post-views b{
+  display:block;
+  font:600 16px/1.05 "IBM Plex Mono",monospace;
+  letter-spacing:-.03em;
+  color:var(--cr-text);
+}
+.dash-post-views span{color:var(--cr-dim);font:500 7px/1.3 "IBM Plex Mono",monospace;letter-spacing:.05em;text-transform:uppercase}
+.dash-post-row>.btn{min-height:30px!important;padding:5px 9px!important;font-size:9.5px!important;font-weight:650!important}
+.dash-post-row .status{min-height:22px!important}
+
+/* Card-expanders used to tuck less-used dashboard blocks away. */
+details.card.dash-fold{
+  grid-column:span 12;
+  padding:0!important;
+  overflow:hidden;
+  background:var(--cr-surface);
+}
+details.card.dash-fold>summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  min-height:54px;
+  padding:13px 17px;
+  list-style:none;
+  cursor:pointer;
+  user-select:none;
+}
+details.card.dash-fold>summary::-webkit-details-marker{display:none}
+.dash-fold-t{color:var(--cr-text);font-size:12.5px;font-weight:640;letter-spacing:-.01em}
+details.card.dash-fold>summary .muted{flex:1;min-width:0;text-align:right}
+details.card.dash-fold>summary:after{
+  content:"+";
+  flex:0 0 24px;
+  width:24px;height:24px;
+  display:grid;place-items:center;
+  border:1px solid var(--cr-line);
+  border-radius:4px;
+  background:var(--cr-surface-2);
+  color:var(--cr-muted);
+  font-size:15px;
+  font-weight:600;
+  line-height:1;
+}
+details.card.dash-fold[open]>summary{border-bottom:1px solid var(--cr-line-soft)}
+details.card.dash-fold[open]>summary:after{content:"−"}
+.dash-fold-body{padding:16px 17px 17px}
+.dash-fold-body .formgrid{gap:0 12px}
+.dash-metrics{
+  margin-top:16px;
+  border:1px solid var(--cr-line);
+  border-radius:5px;
+  overflow:hidden;
+}
+.dash-metrics .metric{
+  min-height:76px!important;
+  padding:12px 14px!important;
+  border-bottom:1px solid var(--cr-line)!important;
+}
+.dash-metrics .metric:nth-child(3n){border-right:0!important}
+.dash-metrics .metric:nth-last-child(-n+3){border-bottom:0!important}
+@media(max-width:1240px){
+  .dash-metrics .metric{border-bottom:1px solid var(--cr-line)!important}
+  .dash-metrics .metric:nth-last-child(-n+3){border-bottom:0!important}
+}
+@media(max-width:620px){
+  .dash-post-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"main badge" "views open"}
+  .dash-post-main{grid-area:main}
+  .dash-post-badge{grid-area:badge}
+  .dash-post-views{grid-area:views;text-align:left;display:flex;align-items:baseline;gap:6px}
+  .dash-post-views b{display:inline}
+  .dash-post-row>.btn{grid-area:open;justify-self:end}
+  .dash-metrics .metric{border-right:0!important;border-bottom:1px solid var(--cr-line)!important}
+  .dash-metrics .metric:nth-child(2n){border-right:0!important}
+  .dash-metrics .metric:nth-last-child(-n+2){border-bottom:0!important}
+  details.card.dash-fold>summary .muted{display:none}
+  .dash-fold-body .f6{grid-column:span 12}
+}
 
 /* Keep destructive actions visually separated from primary flow. */
 .queue-actions .btn.danger,
@@ -4491,7 +4621,7 @@ html[data-theme="nappa"] #dashboardShell:after{
  <div class="hero-copy">
  <div class="hero-kicker"><span>NAPPA</span><i>/</i><b id="pageContext">CONTROL ROOM</b></div>
  <h1 id="pageTitle">Overview</h1>
- <div class="sub" id="pageSubtitle">A live view of streams, content and growth.</div>
+ <div class="sub" id="pageSubtitle">Your scheduled posts, recent clip performance and what is next.</div>
  </div>
  <div class="hero-tools">
  <button class="command-trigger" id="commandTrigger" type="button" aria-haspopup="dialog" aria-controls="commandPalette">
@@ -4523,41 +4653,100 @@ html[data-theme="nappa"] #dashboardShell:after{
  <button data-page="twitchclips"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z"/></svg></span><span>Twitch clips</span></button>
  <button data-page="queue"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg></span><span>Publishing queue</span></button>
  <button data-page="contentperformance"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg></span><span>Performance</span></button>
- <button data-page="clips"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><path d="m8.6 8.6 10.8 6.8M8.6 15.4 19.4 8.6"/></svg></span><span>Clip manager</span></button>
  </div>
  <div class="nav-group">
  <div class="nav-group-label">Streaming</div>
  <button data-page="streams"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7"/><path d="M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/><circle cx="12" cy="12" r="1.5"/></svg></span><span>Streams</span></button>
- <button data-page="streamlibrary"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 4v16M8 9h12M8 15h12"/></svg></span><span>Stream library</span></button>
- <button data-page="analytics"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16"/><path d="m7 15 4-4 3 2 5-6"/></svg></span><span>Analytics</span></button>
  </div>
  <div class="nav-group">
- <div class="nav-group-label">Collaborate</div>
- <button data-page="feedback"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></span><span>Advisor feedback</span></button>
- <button data-page="ideas"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4"/><path d="M8.2 14.5A7 7 0 1 1 15.8 14.5c-1.2.8-1.8 1.7-1.8 3.5h-4c0-1.8-.6-2.7-1.8-3.5z"/></svg></span><span>Ideas & notes</span></button>
+ <div class="nav-group-label">Analyze</div>
+ <button data-page="analytics"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16"/><path d="m7 15 4-4 3 2 5-6"/></svg></span><span>Analytics</span></button>
  </div>
  <div class="nav-group">
  <div class="nav-group-label">System</div>
  <button data-page="settings"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21h-4v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V3h4v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9A1.7 1.7 0 0 0 21 10h.1v4H21a1.7 1.7 0 0 0-1.6 1z"/></svg></span><span>Settings</span></button>
  </div>
+ <div class="nav-group" id="moreNavGroup" hidden>
+ <div class="nav-group-label">More</div>
+ <button type="button" id="moreToggle" aria-expanded="false">
+ <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></span><span>More…</span>
+ </button>
+ </div>
+ <div class="nav-group" id="moreItemsGroup" hidden>
+ <div class="nav-group-label">More</div>
+ </div>
  <button class="mobile-more-trigger" id="mobileMoreTrigger" type="button" aria-haspopup="dialog" aria-controls="mobileMoreSheet">
  <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></span>
  <span>More</span>
  </button>
+
+ <div class="nav-group" id="hiddenPagesShelf" hidden>
+ <div class="nav-group-label">More</div>
+ <button type="button" data-page="streamlibrary"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 4v16M8 9h12M8 15h12"/></svg></span><span>Stream library</span></button>
+ <button type="button" data-page="clips"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><path d="m8.6 8.6 10.8 6.8M8.6 15.4 19.4 8.6"/></svg></span><span>Clip manager</span></button>
+ <button type="button" data-page="feedback"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></span><span>Advisor feedback</span></button>
+ <button type="button" data-page="ideas"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4"/><path d="M8.2 14.5A7 7 0 1 1 15.8 14.5c-1.2.8-1.8 1.7-1.8 3.5h-4c0-1.8-.6-2.7-1.8-3.5z"/></svg></span><span>Ideas &amp; notes</span></button>
+ </div>
  </nav>
 
  <section class="page active" id="dashboard">
  <div class="grid overview-grid">
  <div class="overview-snapshot" id="overviewSnapshot" aria-live="polite"></div>
 
- <div class="card span12 activity-card">
+ <div class="card span7 card-sec dash-upcoming">
+ <div class="row space">
+ <div><h2>Upcoming posts</h2><div class="muted">Scheduled next from your publishing queue.</div></div>
+ <button class="btn secondary" data-jump="queue">Open queue</button>
+ </div>
+ <div id="dashUpcomingList" style="margin-top:12px"></div>
+ </div>
+
+ <div class="card span5 card-sec dash-recent">
+ <div class="row space">
+ <div><h2>Recent performance</h2><div class="muted">Your latest posted clips and their tracked views.</div></div>
+ <button class="btn secondary" data-jump="contentperformance">Open performance</button>
+ </div>
+ <div id="dashRecentList" style="margin-top:12px"></div>
+ </div>
+
+ <details class="card dash-fold" id="dashPlanFold">
+ <summary>
+ <span class="dash-fold-t">Plan, routine &amp; quick actions</span>
+ <span class="muted">Weekly focus &middot; next steps &middot; pre-stream checklist &middot; shortcuts</span>
+ </summary>
+ <div class="dash-fold-body">
+ <div class="quick-actions">
+ <button class="btn" data-jump="queue">+ Queue post</button>
+ <button class="btn" data-jump="twitchclips">+ Prep clip</button>
+ <button class="btn secondary" data-jump="contentperformance">Check stats</button>
+ <button class="btn secondary" data-jump="streams">Log stream</button>
+ </div>
+ <div class="formgrid" style="margin-top:14px">
+ <div class="f6"><label>This week's focus</label><input data-field="weekFocus" placeholder="e.g. stronger hooks / more friend chaos"></div>
+ <div class="f6"><label>Thing I'm testing</label><input data-field="weekTest" placeholder="e.g. shorter clips, more captions"></div>
+ </div>
+ <hr class="sep">
+ <div id="nextActions"></div>
+ <hr class="sep">
+ <div class="row space">
+ <div><h3>Pre-stream checklist</h3><div class="muted">Reset this whenever you start prepping a new stream.</div></div>
+ <button class="btn secondary" id="resetRoutine">Reset</button>
+ </div>
+ <div id="routineList"></div>
+ </div>
+ </details>
+
+ <details class="card dash-fold" id="dashMomentumFold">
+ <summary>
+ <span class="dash-fold-t">Momentum &amp; activity</span>
+ <span class="muted">30-day progress &middot; stream &amp; clip totals &middot; published by format</span>
+ </summary>
+ <div class="dash-fold-body">
  <div class="progress-wrap">
- <div><h2>30-day momentum</h2><div class="muted" id="progressCopy">Start logging activity so this becomes useful.</div><div class="progress" style="margin-top:10px"><div id="progressBar"></div></div></div>
- <div style="font-size:28px;font-weight:900" id="progressPct">0%</div>
+ <div style="min-width:0"><h3>30-day momentum</h3><div class="muted" id="progressCopy">Start logging activity so this becomes useful.</div><div class="progress" style="margin-top:8px"><div id="progressBar"></div></div></div>
+ <div style="font-size:30px;font-weight:700" id="progressPct">0%</div>
  </div>
- </div>
- <div class="card span12 stats-card">
- <div class="metric-grid">
+ <div class="metric-grid dash-metrics">
  <div class="metric"><span>Streams logged</span><b id="kStreams">0</b></div>
  <div class="metric"><span>Clips tracked</span><b id="kClips">0</b></div>
  <div class="metric"><span>Posted clips</span><b id="kPosted">0</b></div>
@@ -4565,27 +4754,24 @@ html[data-theme="nappa"] #dashboardShell:after{
  <div class="metric"><span>Followers from clips</span><b id="kClipFollows">0</b></div>
  <div class="metric"><span>Latest avg viewers</span><b id="kAvg">0</b></div>
  </div>
+ <h3 style="margin-top:16px">Published by format</h3>
+ <div id="formatChart" class="chart"></div>
  </div>
- <div class="card span12" id="integrationHealthCard">
- <div class="row space"><div><h2>Integration health</h2><div class="muted">Connection state comes from the latest verified sync or auth response, not from the dashboard loading.</div></div><span class="status" id="healthLastSync">No sync recorded</span></div>
- <div class="health-grid" id="integrationHealth" aria-live="polite"></div>
+ </details>
+
+ <details class="card dash-fold" id="dashHealthFold">
+ <summary>
+ <span class="dash-fold-t">Integration health</span>
+ <span class="muted">Verified state of Nappa Bot, Twitch and social connections</span>
+ </summary>
+ <div class="dash-fold-body">
+ <div class="row space" style="align-items:flex-start">
+ <div class="muted" style="flex:1">Connection state comes from the latest verified sync or auth response, not from the dashboard loading.</div>
+ <span class="status" id="healthLastSync">No sync recorded</span>
  </div>
- <div class="card span7 routine-card">
- <div class="row space"><div><h2>Pre-stream checklist</h2><div class="muted">Reset this whenever you start prepping a new stream.</div></div><button class="btn secondary" id="resetRoutine">Reset</button></div>
- <div id="routineList"></div>
+ <div class="health-grid" id="integrationHealth" aria-live="polite" style="margin-top:14px"></div>
  </div>
- <div class="card span5 quick-card">
- <h2>Quick actions</h2>
- <div class="quick-actions">
- <button class="btn" data-jump="streams">+ Log stream</button><button class="btn" data-jump="clips">+ Add clip</button>
- <button class="btn secondary" data-jump="queue">+ Queue post</button><button class="btn secondary" data-jump="analytics">Weekly review</button>
- </div>
- <hr class="sep">
- <label>This week's focus</label><input data-field="weekFocus" placeholder="e.g. stronger hooks / more friend chaos">
- <label>Thing I’m testing</label><input data-field="weekTest" placeholder="e.g. shorter clips, more captions">
- </div>
- <div class="card span6 next-card"><h2>Next actions</h2><div id="nextActions"></div></div>
- <div class="card span6 format-card"><h2>Published by format</h2><div id="formatChart" class="chart"></div></div>
+ </details>
  </div>
  </section>
 
@@ -5073,6 +5259,10 @@ html[data-theme="nappa"] #dashboardShell:after{
 
 <script>
 (function(){
+// Decluttered sidebar shared constants: primary pages stay visible; the rest
+// live behind the desktop "More" expander and the mobile "More" sheet.
+window.SIDEBAR_PRIMARY_PAGES=new Set(['dashboard','twitchclips','queue','contentperformance','streams','analytics','settings']);
+window.SIDEBAR_MORE_PAGES=['streamlibrary','clips','feedback','ideas'];
 /* ==========================================================
    SUPABASE LOGIN CONFIG
    These are intentionally placeholders until you create the
@@ -5454,14 +5644,41 @@ function applyWorkspaceRoleUI(){
     roleText.textContent=owner?'Owner':isAdvisor?'Advisor':workspaceRole==='revoked'?'Access removed':'No access';
   }
   document.querySelectorAll('.owner-only').forEach(el=>el.style.display=owner?'':'none');
+  // Owner/Advisor visibility: pages not permitted for this role are hidden
+  // from every group (including the desktop More expander). The rest keep
+  // their natural placement — primary pages in the sidebar, secondary pages
+  // inside #moreItemsGroup.
+  const rolePages=new Set(['dashboard','twitchclips','queue','contentperformance','streams','analytics','settings','streamlibrary','clips','feedback','ideas']);
   document.querySelectorAll('.nav button[data-page]').forEach(btn=>{
-    const allowed=owner||(isAdvisor&&ADVISOR_PAGES.has(btn.dataset.page));
+    const page=btn.dataset.page;
+    const allowed=(owner&&rolePages.has(page))||(isAdvisor&&ADVISOR_PAGES.has(page));
     btn.style.display=allowed?'':'none';
   });
+  const shelf=document.getElementById('hiddenPagesShelf');
+  if(shelf){
+    const shelfVisible=[...shelf.querySelectorAll('button[data-page]')].some(btn=>btn.style.display!=='none');
+    shelf.hidden=!shelfVisible;
+  }
   document.querySelectorAll('.nav-group').forEach(group=>{
     const visible=[...group.querySelectorAll('button[data-page]')].some(btn=>btn.style.display!=='none');
+    if(group.id==='moreItemsGroup'){
+      // The reveal/expand state is handled by the More toggle; never force it.
+      return;
+    }
     group.style.display=visible?'':'none';
   });
+  // "More" expander: Owners get all secondary pages; Advisors get it too but
+  // only the pages their role allows (their buttons were moved to the shelf).
+  const moreGroup=document.getElementById('moreNavGroup');
+  const moreItems=document.getElementById('moreItemsGroup');
+  const advisorMorePages=(isAdvisor?ADVISOR_PAGES:new Set());
+  const hasMorePages=owner||(isAdvisor&&window.SIDEBAR_MORE_PAGES.some(p=>advisorMorePages.has(p)));
+  if(hasMorePages){
+    if(moreGroup)moreGroup.hidden=false;
+  }else{
+    if(moreGroup)moreGroup.hidden=true;
+    if(moreItems)moreItems.hidden=true;
+  }
   const compose=document.getElementById('advisorComposeCard');
   if(compose)compose.style.display=isAdvisor?'':'none';
   const inboxTitle=document.getElementById('advisorInboxTitle');
@@ -6216,7 +6433,7 @@ document.querySelectorAll('.themebtn').forEach(btn=>{
 });
 
 const PAGE_META={
-  dashboard:{title:'Overview',subtitle:'What is happening now, what is next, and what needs your attention.'},
+  dashboard:{title:'Overview',subtitle:'Your scheduled posts, recent clip performance and what is next.'},
   twitchclips:{title:'Twitch clips',subtitle:'Recent clips, source context and Nappa Pack packaging.'},
   queue:{title:'Publishing queue',subtitle:'Prepare posts once, then see exactly what is ready, scheduled or already published.'},
   contentperformance:{title:'Content performance',subtitle:'See which posts actually moved views, engagement and subscribers across platforms.'},
@@ -6237,14 +6454,63 @@ function updatePageHeader(id){
   document.title=`${meta.title} · NappaVT Growth Hub`;
 }
 
-document.querySelectorAll('.nav button').forEach(btn=>btn.addEventListener('click',()=>showPage(btn.dataset.page)));
+document.querySelectorAll('.nav button[data-page]').forEach(btn=>btn.addEventListener('click',()=>showPage(btn.dataset.page)));
 document.querySelectorAll('[data-jump]').forEach(btn=>btn.addEventListener('click',()=>showPage(btn.dataset.jump)));
+setMoreExpandedByToggle();
 function showPage(id){
   if(workspaceRole==='advisor'&&!ADVISOR_PAGES.has(id))id='dashboard';
-  document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===id));
+  document.querySelectorAll('.nav button[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===id));
   document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id===id));
   updatePageHeader(id);
+  // A hidden page can only have been reached through the desktop "More"
+  // expander or Ctrl-K — reveal the group so the active item is visible.
+  const btn=document.querySelector(`.nav button[data-page="${window.CSS&&CSS.escape?CSS.escape(id):id}"]`);
+  const group=btn?.closest('.nav-group');
+  if(group&&(group.id==='moreItemsGroup'||group.id==='hiddenPagesShelf'))setMoreExpanded(true);
   if(window.innerWidth<901)window.scrollTo({top:0,behavior:'smooth'});
+}
+
+
+/* ---- Decluttered sidebar: desktop "More" expander ----------------------- */
+function sidebarMoreButtons(){
+  const esc=window.CSS&&CSS.escape?page=>CSS.escape(page):page=>page;
+  return window.SIDEBAR_MORE_PAGES
+    .map(page=>document.querySelector(`.nav button[data-page="${esc(page)}"]`))
+    .filter(Boolean);
+}
+function setMoreExpanded(open){
+  const items=document.getElementById('moreItemsGroup');
+  const toggle=document.getElementById('moreToggle');
+  if(!items||!toggle)return;
+  if(open){
+    if(items.hidden){
+      // Each hidden page keeps one canonical button in the DOM; the More
+      // group simply shows it in place (never duplicated).
+      const holder=items.querySelector('.more-clone-holder');
+      const pages=sidebarMoreButtons();
+      if(holder){
+        pages.forEach(btn=>holder.appendChild(btn));
+      }else{
+        const wrap=document.createElement('div');
+        wrap.className='more-clone-holder';
+        pages.forEach(btn=>wrap.appendChild(btn));
+        items.appendChild(wrap);
+      }
+      items.hidden=false;
+    }
+  }else{
+    items.hidden=true;
+  }
+  toggle.setAttribute('aria-expanded',open?'true':'false');
+  toggle.classList.toggle('active',open);
+}
+function setMoreExpandedByToggle(){
+  const toggle=document.getElementById('moreToggle');
+  if(!toggle)return;
+  toggle.addEventListener('click',()=>{
+    const items=document.getElementById('moreItemsGroup');
+    setMoreExpanded(!items||items.hidden);
+  });
 }
 
 document.querySelectorAll('[data-field]').forEach(el=>{
@@ -9063,7 +9329,7 @@ function renderQueue(){
       ${q.twitchClipTitle?`<p class="muted"><b>Twitch clip title:</b> ${esc(q.twitchClipTitle)}</p>`:''}
       ${q.twitchVodTitle?`<p class="muted"><b>Source VOD title:</b> ${esc(q.twitchVodTitle)}</p>`:''}
       ${q.note?`<p class="muted"><b>Note:</b> ${esc(q.note)}</p>`:''}
-      ${(()=>{const y=socialPlatformRecord(q,'youtube'),t=socialPlatformRecord(q,'tiktok'),i=socialPlatformRecord(q,'instagram');const rows=[];if(y)rows.push(`YouTube: ${metricNumber(y.views)} views · ${metricNumber(y.likes)} likes`);if(t)rows.push(`TikTok: ${metricNumber(t.views)} views · ${metricNumber(t.likes)} likes`);if(i)rows.push(`Instagram: ${metricNumber(i.views)} views · ${metricNumber(i.likes)} likes`);return rows.length?`<div class="note" style="margin-top:9px"><b>Automatic post analytics</b><br>${rows.join(' · ')}</div>`:''})()}
+      ${queueSocialTrackingHTML(q)}
       ${videoInfo}
 
       <div class="row queue-actions">
@@ -9198,26 +9464,201 @@ function socialPlatformRecord(q,platform){
 }
 function socialMatchSuggestion(q,platform){const root=q?.socialMatchSuggestions;return root&&typeof root==='object'&&root[platform]&&typeof root[platform]==='object'?root[platform]:null}
 function socialEvidenceSummary(record){const e=record?.matchEvidence||{},parts=[];if(num(e.postText)>=.6)parts.push('post text');if(num(e.clipText)>=.6)parts.push('clip title');if(num(e.game)>=.65)parts.push('game');if(num(e.time)>=.78)parts.push('posting time');if(num(e.duration)>=.75)parts.push('duration');return parts.length?parts.join(' + '):'partial context'}
-function confirmSocialSuggestion(queueId,platform){const q=(state.queue||[]).find(x=>String(x.id)===String(queueId));if(!q)return;const s=socialMatchSuggestion(q,platform);if(!s?.url)return;if(!q.manualSocialLinks||typeof q.manualSocialLinks!=='object')q.manualSocialLinks={};q.manualSocialLinks[platform]=s.url;if(q.socialMatchSuggestions&&typeof q.socialMatchSuggestions==='object')delete q.socialMatchSuggestions[platform];state.socialRefreshRequested=true;save();renderContentPerformance()}
+function confirmSocialSuggestion(queueId,platform){const q=(state.queue||[]).find(x=>String(x.id)===String(queueId));if(!q)return;const s=socialMatchSuggestion(q,platform);if(!s?.url)return;setManualSocialLink(q,platform,s.url);if(q.socialMatchSuggestions&&typeof q.socialMatchSuggestions==='object')delete q.socialMatchSuggestions[platform];state.socialRefreshRequested=true;notifyUser(`${platformSocialName(platform)} matched — stats will refresh automatically.`,'good');save();renderContentPerformance()}
 function rejectSocialSuggestion(queueId,platform){const q=(state.queue||[]).find(x=>String(x.id)===String(queueId));if(!q)return;const s=socialMatchSuggestion(q,platform);if(!s?.id)return;if(!q.rejectedSocialIds||typeof q.rejectedSocialIds!=='object')q.rejectedSocialIds={};if(!Array.isArray(q.rejectedSocialIds[platform]))q.rejectedSocialIds[platform]=[];if(!q.rejectedSocialIds[platform].includes(String(s.id)))q.rejectedSocialIds[platform].push(String(s.id));if(q.socialMatchSuggestions&&typeof q.socialMatchSuggestions==='object')delete q.socialMatchSuggestions[platform];state.socialRefreshRequested=true;save();renderContentPerformance()}
 function socialMetricBlock(label,value){return `<div class="performance-mini"><span>${esc(label)}</span><b>${esc(String(value))}</b></div>`}
 function renderPlatformPerformance(record,platform,q=null){
   const name=platform==='youtube'?'YouTube':platform==='tiktok'?'TikTok':'Instagram',suggestion=q?socialMatchSuggestion(q,platform):null;
   if(!record){
     if(suggestion){const confidence=Math.round(num(suggestion.matchConfidence)*100);return `<div class="performance-platform"><div class="row space"><h4>${name}</h4><span class="pill match-confidence-medium">Confirm ${confidence}%</span></div><div class="match-suggestion"><b>Likely match — not linked automatically</b><div class="muted" style="margin-top:4px">${esc(suggestion.title||'Untitled post')}</div><div class="muted" style="margin-top:4px">Evidence: ${esc(socialEvidenceSummary(suggestion))}</div><div class="performance-mini-grid" style="margin-top:8px">${socialMetricBlock('Views',metricNumber(suggestion.views))}${socialMetricBlock('Likes',metricNumber(suggestion.likes))}</div><div class="row" style="margin-top:8px"><button class="btn good" data-confirm-social="${esc(q.id)}" data-platform="${platform}">Yes, link it</button><button class="btn secondary" data-reject-social="${esc(q.id)}" data-platform="${platform}">Not this one</button>${suggestion.url?`<a class="btn secondary" href="${esc(suggestion.url)}" target="_blank" rel="noopener">Open</a>`:''}</div></div></div>`}
+    const manualUrl=getManualSocialLink(q,platform);
+    if(manualUrl){
+      return `<div class="performance-platform"><div class="row space"><h4>${name}</h4><span class="pill">Manual link saved</span></div><div class="match-suggestion"><b>Waiting for Nappa Bot stats</b><div class="muted" style="margin-top:4px">This ${name} link was saved and queued for the next automatic refresh.</div><div class="muted" style="margin-top:5px"><a href="${esc(manualUrl)}" target="_blank" rel="noopener">${esc(manualUrl)}</a></div></div></div>`;
+    }
     return `<div class="performance-platform"><h4>${name}</h4><div class="muted">Not matched yet.</div></div>`;
   }
   const confidence=Math.round(num(record.matchConfidence)*100),matchLabel=record.matchedBy==='manual'?'Confirmed/manual':`Auto ${confidence}%`;
   return `<div class="performance-platform"><div class="row space"><h4>${name}</h4><span class="pill ${record.matchedBy==='automatic'?'match-confidence-high':''}">${matchLabel}</span></div><div class="performance-mini-grid">${socialMetricBlock('Views',metricNumber(record.views))}${socialMetricBlock('Likes',metricNumber(record.likes))}${socialMetricBlock('Comments',metricNumber(record.comments))}${socialMetricBlock('Shares',metricNumber(record.shares))}</div>${platform==='youtube'?`<div class="performance-mini-grid" style="margin-top:5px">${socialMetricBlock('Avg viewed',metricAvailable(record.averageViewPercentage)?num(record.averageViewPercentage).toFixed(1)+'%':'Unavailable')}${socialMetricBlock('Subs gained',metricNumber(record.subscribersGained))}</div>`:platform==='instagram'?`<div class="performance-mini-grid" style="margin-top:5px">${socialMetricBlock('Reach',metricNumber(record.reach))}${socialMetricBlock('Saves',metricNumber(record.saved))}</div>`:''}<div class="muted" style="margin-top:7px">${esc(record.title||'')}</div>${record.matchedBy==='automatic'?`<div class="muted" style="margin-top:5px">Matched using ${esc(socialEvidenceSummary(record))}.</div>`:''}${record.url?`<div style="margin-top:8px"><a class="btn secondary" href="${esc(record.url)}" target="_blank" rel="noopener">Open ${name}</a></div>`:''}</div>`;
 }
+/* ==========================================================================
+   MANUAL SOCIAL LINK FIX — canonical URLs + honest link state
+   (pure helpers; locked in by .test/social-link.test.js)
+   --------------------------------------------------------------------------
+   Why: manual video links used to be stored verbatim, never validated, and
+   gave no feedback — so pasting most real-world YouTube URLs produced a
+   silent "linked but stats never appear" state. YouTube links arrive in many
+   shapes (youtube.com/watch?v=…, youtu.be/…, /shorts/, /embed/, /live/,
+   music/mobile hosts) plus share-sheet tracking params (?si, &list, &t, …).
+   The dashboard now canonicalizes every manual link to one predictable URL
+   before saving it, validates the paste, and tells the user what is stored
+   and what is still waiting for the Nappa Bot stats worker.
+   The bot contract (backend_reference/social_link.py and
+   docs/MANUAL_SOCIAL_LINK_FIX.md) mirrors these exact helpers.
+   ========================================================================== */
+
+const SOCIAL_PLATFORM_NAMES={youtube:'YouTube',tiktok:'TikTok',instagram:'Instagram'};
+function platformSocialName(p){return SOCIAL_PLATFORM_NAMES[String(p||'')]||String(p||'')}
+
+const MANUAL_LINK_PROMPT_HINTS={
+  youtube:'Accepted: https://www.youtube.com/watch?v=…, https://youtu.be/…, https://www.youtube.com/shorts/…, /embed/…, /live/…, music/mobile YouTube links, or a plain 11-character video ID.',
+  tiktok:'Paste the full TikTok video link (https://www.tiktok.com/@user/video/…). Short https://vm.tiktok.com/… share links also work.',
+  instagram:'Paste the full Instagram Reel link (https://www.instagram.com/reel/…). /p/ and /reels/ links also work.'
+};
+
+const YOUTUBE_ID_RE=/^[A-Za-z0-9_-]{11}$/;
+function youtubeHostHint(value){
+  // Domain-boundary check: youtube.com / youtu.be / youtube-nocookie.com and
+  // their subdomains (www., m., music.). A host like "notyoutube.com" must NOT
+  // pass — otherwise a foreign site could smuggle a ?v= lookalike through.
+  const m=/^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i.exec(value);
+  let host='';
+  if(m)host=m[1].toLowerCase();
+  else host=String(value).replace(/^([^/?#:]+).*$/,'$1').toLowerCase();
+  return /(?:^|\.)youtube\.com$/.test(host)||/(?:^|\.)youtu\.be$/.test(host)||/(?:^|\.)youtube-nocookie\.com$/.test(host);
+}
+
+function youtubeVideoIdFromUrl(raw){
+  let value=String(raw??'').trim();
+  if(!value)return '';
+  value=value.replace(/^<(.*)>$/,'$1').trim(); // strip markdown-style <> wrappers
+  if(YOUTUBE_ID_RE.test(value))return value; // bare video ID
+  if(!youtubeHostHint(value))return ''; // never trust a foreign host with a ?v= lookalike
+  let m;
+  m=/\byoutu\.be\/([A-Za-z0-9_-]{11})(?:[/?#]|$)/i.exec(value);if(m)return m[1];
+  m=/(?:^|[?&#])v=([A-Za-z0-9_-]{11})(?:$|[&#])/i.exec(value);if(m)return m[1];
+  m=/\/(?:shorts|embed|live|v|e|watch)\/([A-Za-z0-9_-]{11})(?:[/?#]|$)/i.exec(value);if(m)return m[1];
+  return '';
+}
+function canonicalYouTubeUrl(raw){
+  const value=String(raw??'').trim();
+  if(!value)return {url:'',error:''};
+  const id=youtubeVideoIdFromUrl(value);
+  if(!id)return {url:'',error:'That does not look like a YouTube video link. Accepted: youtube.com/watch?v=…, youtu.be/…, youtube.com/shorts/…, or a plain 11-character video ID.'};
+  return {url:'https://www.youtube.com/watch?v='+id,error:''};
+}
+function mediaHost(raw){
+  const m=/^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i.exec(String(raw||'').trim());
+  return m?(m[1].toLowerCase().replace(/^www\./,'').replace(/^m\./,'')):'';
+}
+function stripMediaParams(raw){
+  return String(raw||'').trim().split(/[?#]/)[0].replace(/\/+$/,'')||'';
+}
+function canonicalTikTokUrl(raw){
+  const value=String(raw??'').trim();
+  if(!value)return {url:'',error:''};
+  const host=mediaHost(value);
+  if(!host)return {url:'',error:'Paste the full TikTok link (https://www.tiktok.com/@user/video/… or a https://vm.tiktok.com/… share link).'};
+  if(host==='vm.tiktok.com'||host==='vt.tiktok.com'){
+    const code=(value.split(/[?#]/)[0].match(/\/([A-Za-z0-9]+)\/?$/)||[])[1];
+    if(!code)return {url:'',error:'That vm.tiktok.com share link does not contain a video code.'};
+    return {url:'https://vm.tiktok.com/'+code+'/',error:''};
+  }
+  if(host==='tiktok.com'){
+    const path=stripMediaParams(value).replace(/^https?:\/\/(?:www\.)?tiktok\.com/i,'');
+    if(!/\/video\//i.test(path)){
+      return {url:'',error:'That TikTok link does not point at a video page (expected /@user/video/<id>).'};
+    }
+    return {url:stripMediaParams(value),error:''};
+  }
+  return {url:'',error:'That link is not a TikTok link.'};
+}
+function canonicalInstagramUrl(raw){
+  const value=String(raw??'').trim();
+  if(!value)return {url:'',error:''};
+  const host=mediaHost(value);
+  if(host!=='instagram.com')return {url:'',error:'That link is not an Instagram link (expected instagram.com/reel/…).'};
+  const path=stripMediaParams(value).replace(/^https?:\/\/(?:www\.)?instagram\.com/i,'');
+  // Real shortcodes are ~11 base64url chars; the {8,} guard keeps words like
+  // "reels/audio/…" from being misread as a post shortcode.
+  const m=/\/(?:reel|reels|p)\/([A-Za-z0-9_-]{8,})(?:[/?#]|$)/.exec(path);
+  if(!m)return {url:'',error:'That Instagram link does not contain a Reel/post shortcode (expected instagram.com/reel/<code>).'};
+  const kind=/\/p\//i.test(path)?'p':'reel';
+  return {url:'https://www.instagram.com/'+kind+'/'+m[1],error:''};
+}
+function canonicalSocialLinkUrl(platform,raw){
+  const p=String(platform||'');
+  if(p==='youtube')return canonicalYouTubeUrl(raw);
+  if(p==='tiktok')return canonicalTikTokUrl(raw);
+  if(p==='instagram')return canonicalInstagramUrl(raw);
+  return {url:String(raw??'').trim(),error:''};
+}
+
+function getManualSocialLink(q,platform){
+  if(!q||!q.manualSocialLinks||typeof q.manualSocialLinks!=='object')return '';
+  const value=q.manualSocialLinks[String(platform)];
+  return typeof value==='string'?value.trim():'';
+}
+function setManualSocialLink(q,platform,raw){
+  if(!q)return;
+  const p=String(platform||'');
+  const value=String(raw??'').trim();
+  if(!value){ // blank input = unlink this platform
+    if(q.manualSocialLinks&&typeof q.manualSocialLinks==='object'){
+      delete q.manualSocialLinks[p];
+      if(!Object.keys(q.manualSocialLinks).length)delete q.manualSocialLinks;
+    }
+    if(q.manualLinkRequestedAt&&typeof q.manualLinkRequestedAt==='object')delete q.manualLinkRequestedAt[p];
+    return;
+  }
+  const clean=canonicalSocialLinkUrl(p,value);
+  // Fallback: never drop a link the canonicalizer cannot read (legacy manual
+  // URLs, bot-suggested URLs) — the stats worker still needs to see it.
+  if(!q.manualSocialLinks||typeof q.manualSocialLinks!=='object')q.manualSocialLinks={};
+  q.manualSocialLinks[p]=clean.url||value;
+  if(!q.manualLinkRequestedAt||typeof q.manualLinkRequestedAt!=='object')q.manualLinkRequestedAt={};
+  q.manualLinkRequestedAt[p]=new Date().toISOString();
+}
+function removeManualSocialLink(q,platform){setManualSocialLink(q,platform,'')}
+function manualSocialLinkState(q,platform){
+  const url=getManualSocialLink(q,platform);
+  if(!url)return 'none';
+  return socialPlatformRecord(q,platform)?'tracked':'waiting';
+}
+function queueSocialTrackingHTML(q){
+  const parts=[],pending=[];
+  for(const p of ['youtube','tiktok','instagram']){
+    const r=socialPlatformRecord(q,p);
+    if(r)parts.push(`${platformSocialName(p)}: ${metricNumber(r.views)} views · ${metricNumber(r.likes)} likes`);
+    else if(getManualSocialLink(q,p))pending.push(p);
+  }
+  let html='';
+  if(parts.length)html+=`<div class="note" style="margin-top:9px"><b>Automatic post analytics</b><br>${parts.join(' · ')}</div>`;
+  if(pending.length)html+=`<div class="note" style="margin-top:9px"><b>Manual ${pending.length>1?'links':'link'} saved · waiting for Nappa Bot stats</b><br>${pending.map(p=>`<a href="${esc(getManualSocialLink(q,p))}" target="_blank" rel="noopener">${platformSocialName(p)}</a>`).join(' · ')}</div>`;
+  return html;
+}
+function socialLinkButtonHTML(q,platform){
+  const name=platformSocialName(platform);
+  const linked=!!getManualSocialLink(q,platform);
+  return `<button class="btn secondary" data-social-link="${platform}" data-social-q="${esc(q.id)}">${linked?'Change '+name+' link':'Link '+name+' manually'}</button>`;
+}
+/* ==========================================================================
+   END MANUAL SOCIAL LINK FIX HELPERS
+   ========================================================================== */
+
 function promptSocialLink(queueId,platform){
   const q=(state.queue||[]).find(x=>String(x.id)===String(queueId));if(!q)return;
-  const current=q.manualSocialLinks?.[platform]||'';
-  const label=platform==='youtube'?'YouTube Short/video':platform==='tiktok'?'TikTok':'Instagram Reel';
-  const url=prompt(`Paste the ${label} URL. Leave blank to clear the manual link.`,current);
-  if(url===null)return;
-  if(!q.manualSocialLinks||typeof q.manualSocialLinks!=='object')q.manualSocialLinks={};
-  q.manualSocialLinks[platform]=url.trim();
+  const name=platformSocialName(platform);
+  const current=getManualSocialLink(q,platform);
+  const hint=MANUAL_LINK_PROMPT_HINTS[platform]||'';
+  const message=`Paste the ${name} URL to track its stats.\n\n${hint}\n\nLeave blank to remove the current manual link.`+(current?`\n\nCurrently linked:\n${current}`:'');
+  const raw=prompt(message,current);
+  if(raw===null)return; // cancelled — nothing changes
+  const value=String(raw||'').trim();
+  if(!value){
+    removeManualSocialLink(q,platform);
+    notifyUser(`${name} link removed.`,'good');
+    state.socialRefreshRequested=true;
+    save();
+    renderQueue();renderContentPerformance();
+    return;
+  }
+  const {url,error}=canonicalSocialLinkUrl(platform,value);
+  if(!url){
+    notifyUser(error||`That ${name} link could not be read. Nothing was changed.`,'error');
+    return;
+  }
+  setManualSocialLink(q,platform,url);
+  notifyUser(`${name} link saved — Nappa Bot will fetch its stats on the next refresh.`,'good');
   state.socialRefreshRequested=true;
   save();
   renderQueue();renderContentPerformance();
@@ -9320,9 +9761,9 @@ function renderContentPerformance(){
             ${renderPlatformPerformance(i,'instagram',q)}
           </div>
           <div class="social-link-row">
-            <button class="btn secondary" data-social-link="youtube" data-social-q="${esc(q.id)}">Link YouTube manually</button>
-            <button class="btn secondary" data-social-link="tiktok" data-social-q="${esc(q.id)}">Link TikTok manually</button>
-            <button class="btn secondary" data-social-link="instagram" data-social-q="${esc(q.id)}">Link Instagram manually</button>
+            ${socialLinkButtonHTML(q,'youtube')}
+            ${socialLinkButtonHTML(q,'tiktok')}
+            ${socialLinkButtonHTML(q,'instagram')}
           </div>
         </article>`;
       }).join('');
@@ -9538,6 +9979,84 @@ function renderOverviewSnapshot(){
   }));
 }
 
+// Upcoming posts for the Overview content strip. Reuses renderQueue()'s sort
+// so the dashboard agrees with the Publishing queue page on what is next.
+function upcomingQueueRows(limit){
+  return (state.queue||[])
+    .filter(q=>q&&q.status!=='Posted')
+    .map(q=>{
+      const d=new Date(`${q.date||''}T${q.time||'00:00'}`);
+      return {...q,_when:Number.isNaN(d.getTime())?null:d};
+    })
+    .filter(q=>q._when)
+    .sort((a,b)=>a._when-b._when)
+    .slice(0,limit);
+}
+function dashStatusBadge(status){
+  const s=String(status||'');
+  const cls=s==='Posted'?'s-posted':s==='Ready'?'s-ready':s==='Idea'?'s-idea':'';
+  return `<span class="status ${cls}">${esc(s||'Planned')}</span>`;
+}
+function renderDashUpcoming(){
+  const root=document.getElementById('dashUpcomingList');if(!root)return;
+  const rows=upcomingQueueRows(3);
+  if(!rows.length){
+    root.innerHTML='<div class="empty">Nothing scheduled yet. <b>Queue a post</b> and your next few go-live dates show up here.</div>';
+    return;
+  }
+  root.innerHTML=rows.map(q=>{
+    const title=q.postTitle||q.title||'Untitled post';
+    const when=q._when?glanceTimeLabel(q._when):'';
+    const platforms=Array.isArray(q.platforms)&&q.platforms.length
+      ?q.platforms.join(' · ')
+      :String(q.platform||'').replace(/,/g,' · ');
+    const views=totalQueueSocialViews(q);
+    return `<div class="dash-post-row">
+      <div class="dash-post-main">
+        <div class="dash-post-title">${esc(title)}</div>
+        <div class="muted">${esc(when)}${platforms?' · '+esc(platforms):''}</div>
+      </div>
+      ${views!==null?`<div class="dash-post-views" title="Tracked social views"><b>${metricNumber(views)}</b><span>views</span></div>`:''}
+      <div class="dash-post-badge">${dashStatusBadge(q.status)}</div>
+      <button class="btn secondary" data-dash-open-q="${esc(q.id)}" aria-label="Open post ${esc(title)}">Open</button>
+    </div>`;
+  }).join('');
+  root.querySelectorAll('[data-dash-open-q]').forEach(btn=>btn.addEventListener('click',()=>showPage('queue')));
+}
+// Total tracked social views for one post (shared with the glance math).
+function totalQueueSocialViews(q){
+  const v=socialPlatformRecord(q,'youtube')?.views;
+  const t=socialPlatformRecord(q,'tiktok')?.views;
+  const i=socialPlatformRecord(q,'instagram')?.views;
+  const has=v!=null||t!=null||i!=null;
+  return has?num(v)+num(t)+num(i):null;
+}
+function renderDashRecent(){
+  const root=document.getElementById('dashRecentList');if(!root)return;
+  const rows=(state.queue||[])
+    .filter(q=>q&&q.status==='Posted')
+    .slice()
+    .sort((a,b)=>String(b.postedAt||b.date||'').localeCompare(String(a.postedAt||a.date||'')))
+    .slice(0,3);
+  if(!rows.length){
+    root.innerHTML='<div class="empty">No posted clips yet. Mark a queue post as posted and its stats will land here.</div>';
+    return;
+  }
+  root.innerHTML=rows.map(q=>{
+    const title=q.postTitle||q.title||'Untitled post';
+    const when=q.postedAt?formatTwitchDate(q.postedAt):(q.date||'');
+    const views=totalQueueSocialViews(q);
+    return `<div class="dash-post-row">
+      <div class="dash-post-main">
+        <div class="dash-post-title">${esc(title)}</div>
+        <div class="muted">Posted ${esc(when)}</div>
+      </div>
+      ${views!==null?`<div class="dash-post-views" title="Tracked social views"><b>${metricNumber(views)}</b><span>views</span></div>`:'<div class="muted">No stats linked yet</div>'}
+      <button class="btn secondary" data-dash-open-perf="${esc(q.id)}">Details</button>
+    </div>`;
+  }).join('');
+  root.querySelectorAll('[data-dash-open-perf]').forEach(btn=>btn.addEventListener('click',()=>showPage('contentperformance')));
+}
 function renderDashboard(){
   renderOverviewSnapshot();
   const posted=state.clips.filter(c=>c.status==='Posted');
@@ -9556,6 +10075,7 @@ function renderDashboard(){
   document.getElementById('progressCopy').textContent=`${state.streams.length}/12 target streams · ${posted.length}/20 target posted clips · ${routineDone}/${routineItems.length} routine tasks checked`;
   const byFormat={};posted.forEach(c=>byFormat[c.format]=(byFormat[c.format]||0)+1);
   chart('formatChart',Object.entries(byFormat).map(([label,value])=>({label,value})));renderNext();
+  renderDashUpcoming();renderDashRecent();
 }
 function renderAnalytics(){
   chart('viewerChart',[...state.streams].reverse().map(s=>({label:s.game||s.date,value:s.avg})));
@@ -9738,10 +10258,10 @@ setTimeout(()=>{try{gdriveSilentReconnect()}catch(e){}},600);
     if(commandFoot)commandFoot.textContent=(mac?'⌘ K':'Ctrl K')+' toggle';
   }
   if(!more||!sheet||!grid)return;
-  const primary=new Set(['dashboard','twitchclips','queue','streams']);
+  const primary=window.SIDEBAR_PRIMARY_PAGES;
   const groupFor=b=>b.closest('.nav-group')?.querySelector('.nav-group-label')?.textContent?.trim()||'Workspace';
-  const esc=s=>String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   function eligible(){return Array.from(document.querySelectorAll('.nav button[data-page]')).filter(b=>!primary.has(b.dataset.page)&&b.style.display!=='none')}
+  const esc=s=>String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   function updateMoreState(){const active=document.querySelector('.nav button[data-page].active');more.classList.toggle('active',!!active&&!primary.has(active.dataset.page))}
   function render(){
     const active=document.querySelector('.nav button[data-page].active')?.dataset.page;
