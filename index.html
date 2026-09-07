@@ -9063,7 +9063,7 @@ function renderQueue(){
       ${q.twitchClipTitle?`<p class="muted"><b>Twitch clip title:</b> ${esc(q.twitchClipTitle)}</p>`:''}
       ${q.twitchVodTitle?`<p class="muted"><b>Source VOD title:</b> ${esc(q.twitchVodTitle)}</p>`:''}
       ${q.note?`<p class="muted"><b>Note:</b> ${esc(q.note)}</p>`:''}
-      ${(()=>{const y=socialPlatformRecord(q,'youtube'),t=socialPlatformRecord(q,'tiktok'),i=socialPlatformRecord(q,'instagram');const rows=[];if(y)rows.push(`YouTube: ${metricNumber(y.views)} views · ${metricNumber(y.likes)} likes`);if(t)rows.push(`TikTok: ${metricNumber(t.views)} views · ${metricNumber(t.likes)} likes`);if(i)rows.push(`Instagram: ${metricNumber(i.views)} views · ${metricNumber(i.likes)} likes`);return rows.length?`<div class="note" style="margin-top:9px"><b>Automatic post analytics</b><br>${rows.join(' · ')}</div>`:''})()}
+      ${queueSocialTrackingHTML(q)}
       ${videoInfo}
 
       <div class="row queue-actions">
@@ -9198,26 +9198,201 @@ function socialPlatformRecord(q,platform){
 }
 function socialMatchSuggestion(q,platform){const root=q?.socialMatchSuggestions;return root&&typeof root==='object'&&root[platform]&&typeof root[platform]==='object'?root[platform]:null}
 function socialEvidenceSummary(record){const e=record?.matchEvidence||{},parts=[];if(num(e.postText)>=.6)parts.push('post text');if(num(e.clipText)>=.6)parts.push('clip title');if(num(e.game)>=.65)parts.push('game');if(num(e.time)>=.78)parts.push('posting time');if(num(e.duration)>=.75)parts.push('duration');return parts.length?parts.join(' + '):'partial context'}
-function confirmSocialSuggestion(queueId,platform){const q=(state.queue||[]).find(x=>String(x.id)===String(queueId));if(!q)return;const s=socialMatchSuggestion(q,platform);if(!s?.url)return;if(!q.manualSocialLinks||typeof q.manualSocialLinks!=='object')q.manualSocialLinks={};q.manualSocialLinks[platform]=s.url;if(q.socialMatchSuggestions&&typeof q.socialMatchSuggestions==='object')delete q.socialMatchSuggestions[platform];state.socialRefreshRequested=true;save();renderContentPerformance()}
+function confirmSocialSuggestion(queueId,platform){const q=(state.queue||[]).find(x=>String(x.id)===String(queueId));if(!q)return;const s=socialMatchSuggestion(q,platform);if(!s?.url)return;setManualSocialLink(q,platform,s.url);if(q.socialMatchSuggestions&&typeof q.socialMatchSuggestions==='object')delete q.socialMatchSuggestions[platform];state.socialRefreshRequested=true;notifyUser(`${platformSocialName(platform)} matched — stats will refresh automatically.`,'good');save();renderContentPerformance()}
 function rejectSocialSuggestion(queueId,platform){const q=(state.queue||[]).find(x=>String(x.id)===String(queueId));if(!q)return;const s=socialMatchSuggestion(q,platform);if(!s?.id)return;if(!q.rejectedSocialIds||typeof q.rejectedSocialIds!=='object')q.rejectedSocialIds={};if(!Array.isArray(q.rejectedSocialIds[platform]))q.rejectedSocialIds[platform]=[];if(!q.rejectedSocialIds[platform].includes(String(s.id)))q.rejectedSocialIds[platform].push(String(s.id));if(q.socialMatchSuggestions&&typeof q.socialMatchSuggestions==='object')delete q.socialMatchSuggestions[platform];state.socialRefreshRequested=true;save();renderContentPerformance()}
 function socialMetricBlock(label,value){return `<div class="performance-mini"><span>${esc(label)}</span><b>${esc(String(value))}</b></div>`}
 function renderPlatformPerformance(record,platform,q=null){
   const name=platform==='youtube'?'YouTube':platform==='tiktok'?'TikTok':'Instagram',suggestion=q?socialMatchSuggestion(q,platform):null;
   if(!record){
     if(suggestion){const confidence=Math.round(num(suggestion.matchConfidence)*100);return `<div class="performance-platform"><div class="row space"><h4>${name}</h4><span class="pill match-confidence-medium">Confirm ${confidence}%</span></div><div class="match-suggestion"><b>Likely match — not linked automatically</b><div class="muted" style="margin-top:4px">${esc(suggestion.title||'Untitled post')}</div><div class="muted" style="margin-top:4px">Evidence: ${esc(socialEvidenceSummary(suggestion))}</div><div class="performance-mini-grid" style="margin-top:8px">${socialMetricBlock('Views',metricNumber(suggestion.views))}${socialMetricBlock('Likes',metricNumber(suggestion.likes))}</div><div class="row" style="margin-top:8px"><button class="btn good" data-confirm-social="${esc(q.id)}" data-platform="${platform}">Yes, link it</button><button class="btn secondary" data-reject-social="${esc(q.id)}" data-platform="${platform}">Not this one</button>${suggestion.url?`<a class="btn secondary" href="${esc(suggestion.url)}" target="_blank" rel="noopener">Open</a>`:''}</div></div></div>`}
+    const manualUrl=getManualSocialLink(q,platform);
+    if(manualUrl){
+      return `<div class="performance-platform"><div class="row space"><h4>${name}</h4><span class="pill">Manual link saved</span></div><div class="match-suggestion"><b>Waiting for Nappa Bot stats</b><div class="muted" style="margin-top:4px">This ${name} link was saved and queued for the next automatic refresh.</div><div class="muted" style="margin-top:5px"><a href="${esc(manualUrl)}" target="_blank" rel="noopener">${esc(manualUrl)}</a></div></div></div>`;
+    }
     return `<div class="performance-platform"><h4>${name}</h4><div class="muted">Not matched yet.</div></div>`;
   }
   const confidence=Math.round(num(record.matchConfidence)*100),matchLabel=record.matchedBy==='manual'?'Confirmed/manual':`Auto ${confidence}%`;
   return `<div class="performance-platform"><div class="row space"><h4>${name}</h4><span class="pill ${record.matchedBy==='automatic'?'match-confidence-high':''}">${matchLabel}</span></div><div class="performance-mini-grid">${socialMetricBlock('Views',metricNumber(record.views))}${socialMetricBlock('Likes',metricNumber(record.likes))}${socialMetricBlock('Comments',metricNumber(record.comments))}${socialMetricBlock('Shares',metricNumber(record.shares))}</div>${platform==='youtube'?`<div class="performance-mini-grid" style="margin-top:5px">${socialMetricBlock('Avg viewed',metricAvailable(record.averageViewPercentage)?num(record.averageViewPercentage).toFixed(1)+'%':'Unavailable')}${socialMetricBlock('Subs gained',metricNumber(record.subscribersGained))}</div>`:platform==='instagram'?`<div class="performance-mini-grid" style="margin-top:5px">${socialMetricBlock('Reach',metricNumber(record.reach))}${socialMetricBlock('Saves',metricNumber(record.saved))}</div>`:''}<div class="muted" style="margin-top:7px">${esc(record.title||'')}</div>${record.matchedBy==='automatic'?`<div class="muted" style="margin-top:5px">Matched using ${esc(socialEvidenceSummary(record))}.</div>`:''}${record.url?`<div style="margin-top:8px"><a class="btn secondary" href="${esc(record.url)}" target="_blank" rel="noopener">Open ${name}</a></div>`:''}</div>`;
 }
+/* ==========================================================================
+   MANUAL SOCIAL LINK FIX — canonical URLs + honest link state
+   (pure helpers; locked in by .test/social-link.test.js)
+   --------------------------------------------------------------------------
+   Why: manual video links used to be stored verbatim, never validated, and
+   gave no feedback — so pasting most real-world YouTube URLs produced a
+   silent "linked but stats never appear" state. YouTube links arrive in many
+   shapes (youtube.com/watch?v=…, youtu.be/…, /shorts/, /embed/, /live/,
+   music/mobile hosts) plus share-sheet tracking params (?si, &list, &t, …).
+   The dashboard now canonicalizes every manual link to one predictable URL
+   before saving it, validates the paste, and tells the user what is stored
+   and what is still waiting for the Nappa Bot stats worker.
+   The bot contract (backend_reference/social_link.py and
+   docs/MANUAL_SOCIAL_LINK_FIX.md) mirrors these exact helpers.
+   ========================================================================== */
+
+const SOCIAL_PLATFORM_NAMES={youtube:'YouTube',tiktok:'TikTok',instagram:'Instagram'};
+function platformSocialName(p){return SOCIAL_PLATFORM_NAMES[String(p||'')]||String(p||'')}
+
+const MANUAL_LINK_PROMPT_HINTS={
+  youtube:'Accepted: https://www.youtube.com/watch?v=…, https://youtu.be/…, https://www.youtube.com/shorts/…, /embed/…, /live/…, music/mobile YouTube links, or a plain 11-character video ID.',
+  tiktok:'Paste the full TikTok video link (https://www.tiktok.com/@user/video/…). Short https://vm.tiktok.com/… share links also work.',
+  instagram:'Paste the full Instagram Reel link (https://www.instagram.com/reel/…). /p/ and /reels/ links also work.'
+};
+
+const YOUTUBE_ID_RE=/^[A-Za-z0-9_-]{11}$/;
+function youtubeHostHint(value){
+  // Domain-boundary check: youtube.com / youtu.be / youtube-nocookie.com and
+  // their subdomains (www., m., music.). A host like "notyoutube.com" must NOT
+  // pass — otherwise a foreign site could smuggle a ?v= lookalike through.
+  const m=/^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i.exec(value);
+  let host='';
+  if(m)host=m[1].toLowerCase();
+  else host=String(value).replace(/^([^/?#:]+).*$/,'$1').toLowerCase();
+  return /(?:^|\.)youtube\.com$/.test(host)||/(?:^|\.)youtu\.be$/.test(host)||/(?:^|\.)youtube-nocookie\.com$/.test(host);
+}
+
+function youtubeVideoIdFromUrl(raw){
+  let value=String(raw??'').trim();
+  if(!value)return '';
+  value=value.replace(/^<(.*)>$/,'$1').trim(); // strip markdown-style <> wrappers
+  if(YOUTUBE_ID_RE.test(value))return value; // bare video ID
+  if(!youtubeHostHint(value))return ''; // never trust a foreign host with a ?v= lookalike
+  let m;
+  m=/\byoutu\.be\/([A-Za-z0-9_-]{11})(?:[/?#]|$)/i.exec(value);if(m)return m[1];
+  m=/(?:^|[?&#])v=([A-Za-z0-9_-]{11})(?:$|[&#])/i.exec(value);if(m)return m[1];
+  m=/\/(?:shorts|embed|live|v|e|watch)\/([A-Za-z0-9_-]{11})(?:[/?#]|$)/i.exec(value);if(m)return m[1];
+  return '';
+}
+function canonicalYouTubeUrl(raw){
+  const value=String(raw??'').trim();
+  if(!value)return {url:'',error:''};
+  const id=youtubeVideoIdFromUrl(value);
+  if(!id)return {url:'',error:'That does not look like a YouTube video link. Accepted: youtube.com/watch?v=…, youtu.be/…, youtube.com/shorts/…, or a plain 11-character video ID.'};
+  return {url:'https://www.youtube.com/watch?v='+id,error:''};
+}
+function mediaHost(raw){
+  const m=/^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i.exec(String(raw||'').trim());
+  return m?(m[1].toLowerCase().replace(/^www\./,'').replace(/^m\./,'')):'';
+}
+function stripMediaParams(raw){
+  return String(raw||'').trim().split(/[?#]/)[0].replace(/\/+$/,'')||'';
+}
+function canonicalTikTokUrl(raw){
+  const value=String(raw??'').trim();
+  if(!value)return {url:'',error:''};
+  const host=mediaHost(value);
+  if(!host)return {url:'',error:'Paste the full TikTok link (https://www.tiktok.com/@user/video/… or a https://vm.tiktok.com/… share link).'};
+  if(host==='vm.tiktok.com'||host==='vt.tiktok.com'){
+    const code=(value.split(/[?#]/)[0].match(/\/([A-Za-z0-9]+)\/?$/)||[])[1];
+    if(!code)return {url:'',error:'That vm.tiktok.com share link does not contain a video code.'};
+    return {url:'https://vm.tiktok.com/'+code+'/',error:''};
+  }
+  if(host==='tiktok.com'){
+    const path=stripMediaParams(value).replace(/^https?:\/\/(?:www\.)?tiktok\.com/i,'');
+    if(!/\/video\//i.test(path)){
+      return {url:'',error:'That TikTok link does not point at a video page (expected /@user/video/<id>).'};
+    }
+    return {url:stripMediaParams(value),error:''};
+  }
+  return {url:'',error:'That link is not a TikTok link.'};
+}
+function canonicalInstagramUrl(raw){
+  const value=String(raw??'').trim();
+  if(!value)return {url:'',error:''};
+  const host=mediaHost(value);
+  if(host!=='instagram.com')return {url:'',error:'That link is not an Instagram link (expected instagram.com/reel/…).'};
+  const path=stripMediaParams(value).replace(/^https?:\/\/(?:www\.)?instagram\.com/i,'');
+  // Real shortcodes are ~11 base64url chars; the {8,} guard keeps words like
+  // "reels/audio/…" from being misread as a post shortcode.
+  const m=/\/(?:reel|reels|p)\/([A-Za-z0-9_-]{8,})(?:[/?#]|$)/.exec(path);
+  if(!m)return {url:'',error:'That Instagram link does not contain a Reel/post shortcode (expected instagram.com/reel/<code>).'};
+  const kind=/\/p\//i.test(path)?'p':'reel';
+  return {url:'https://www.instagram.com/'+kind+'/'+m[1],error:''};
+}
+function canonicalSocialLinkUrl(platform,raw){
+  const p=String(platform||'');
+  if(p==='youtube')return canonicalYouTubeUrl(raw);
+  if(p==='tiktok')return canonicalTikTokUrl(raw);
+  if(p==='instagram')return canonicalInstagramUrl(raw);
+  return {url:String(raw??'').trim(),error:''};
+}
+
+function getManualSocialLink(q,platform){
+  if(!q||!q.manualSocialLinks||typeof q.manualSocialLinks!=='object')return '';
+  const value=q.manualSocialLinks[String(platform)];
+  return typeof value==='string'?value.trim():'';
+}
+function setManualSocialLink(q,platform,raw){
+  if(!q)return;
+  const p=String(platform||'');
+  const value=String(raw??'').trim();
+  if(!value){ // blank input = unlink this platform
+    if(q.manualSocialLinks&&typeof q.manualSocialLinks==='object'){
+      delete q.manualSocialLinks[p];
+      if(!Object.keys(q.manualSocialLinks).length)delete q.manualSocialLinks;
+    }
+    if(q.manualLinkRequestedAt&&typeof q.manualLinkRequestedAt==='object')delete q.manualLinkRequestedAt[p];
+    return;
+  }
+  const clean=canonicalSocialLinkUrl(p,value);
+  // Fallback: never drop a link the canonicalizer cannot read (legacy manual
+  // URLs, bot-suggested URLs) — the stats worker still needs to see it.
+  if(!q.manualSocialLinks||typeof q.manualSocialLinks!=='object')q.manualSocialLinks={};
+  q.manualSocialLinks[p]=clean.url||value;
+  if(!q.manualLinkRequestedAt||typeof q.manualLinkRequestedAt!=='object')q.manualLinkRequestedAt={};
+  q.manualLinkRequestedAt[p]=new Date().toISOString();
+}
+function removeManualSocialLink(q,platform){setManualSocialLink(q,platform,'')}
+function manualSocialLinkState(q,platform){
+  const url=getManualSocialLink(q,platform);
+  if(!url)return 'none';
+  return socialPlatformRecord(q,platform)?'tracked':'waiting';
+}
+function queueSocialTrackingHTML(q){
+  const parts=[],pending=[];
+  for(const p of ['youtube','tiktok','instagram']){
+    const r=socialPlatformRecord(q,p);
+    if(r)parts.push(`${platformSocialName(p)}: ${metricNumber(r.views)} views · ${metricNumber(r.likes)} likes`);
+    else if(getManualSocialLink(q,p))pending.push(p);
+  }
+  let html='';
+  if(parts.length)html+=`<div class="note" style="margin-top:9px"><b>Automatic post analytics</b><br>${parts.join(' · ')}</div>`;
+  if(pending.length)html+=`<div class="note" style="margin-top:9px"><b>Manual ${pending.length>1?'links':'link'} saved · waiting for Nappa Bot stats</b><br>${pending.map(p=>`<a href="${esc(getManualSocialLink(q,p))}" target="_blank" rel="noopener">${platformSocialName(p)}</a>`).join(' · ')}</div>`;
+  return html;
+}
+function socialLinkButtonHTML(q,platform){
+  const name=platformSocialName(platform);
+  const linked=!!getManualSocialLink(q,platform);
+  return `<button class="btn secondary" data-social-link="${platform}" data-social-q="${esc(q.id)}">${linked?'Change '+name+' link':'Link '+name+' manually'}</button>`;
+}
+/* ==========================================================================
+   END MANUAL SOCIAL LINK FIX HELPERS
+   ========================================================================== */
+
 function promptSocialLink(queueId,platform){
   const q=(state.queue||[]).find(x=>String(x.id)===String(queueId));if(!q)return;
-  const current=q.manualSocialLinks?.[platform]||'';
-  const label=platform==='youtube'?'YouTube Short/video':platform==='tiktok'?'TikTok':'Instagram Reel';
-  const url=prompt(`Paste the ${label} URL. Leave blank to clear the manual link.`,current);
-  if(url===null)return;
-  if(!q.manualSocialLinks||typeof q.manualSocialLinks!=='object')q.manualSocialLinks={};
-  q.manualSocialLinks[platform]=url.trim();
+  const name=platformSocialName(platform);
+  const current=getManualSocialLink(q,platform);
+  const hint=MANUAL_LINK_PROMPT_HINTS[platform]||'';
+  const message=`Paste the ${name} URL to track its stats.\n\n${hint}\n\nLeave blank to remove the current manual link.`+(current?`\n\nCurrently linked:\n${current}`:'');
+  const raw=prompt(message,current);
+  if(raw===null)return; // cancelled — nothing changes
+  const value=String(raw||'').trim();
+  if(!value){
+    removeManualSocialLink(q,platform);
+    notifyUser(`${name} link removed.`,'good');
+    state.socialRefreshRequested=true;
+    save();
+    renderQueue();renderContentPerformance();
+    return;
+  }
+  const {url,error}=canonicalSocialLinkUrl(platform,value);
+  if(!url){
+    notifyUser(error||`That ${name} link could not be read. Nothing was changed.`,'error');
+    return;
+  }
+  setManualSocialLink(q,platform,url);
+  notifyUser(`${name} link saved — Nappa Bot will fetch its stats on the next refresh.`,'good');
   state.socialRefreshRequested=true;
   save();
   renderQueue();renderContentPerformance();
@@ -9320,9 +9495,9 @@ function renderContentPerformance(){
             ${renderPlatformPerformance(i,'instagram',q)}
           </div>
           <div class="social-link-row">
-            <button class="btn secondary" data-social-link="youtube" data-social-q="${esc(q.id)}">Link YouTube manually</button>
-            <button class="btn secondary" data-social-link="tiktok" data-social-q="${esc(q.id)}">Link TikTok manually</button>
-            <button class="btn secondary" data-social-link="instagram" data-social-q="${esc(q.id)}">Link Instagram manually</button>
+            ${socialLinkButtonHTML(q,'youtube')}
+            ${socialLinkButtonHTML(q,'tiktok')}
+            ${socialLinkButtonHTML(q,'instagram')}
           </div>
         </article>`;
       }).join('');
