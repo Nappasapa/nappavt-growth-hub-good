@@ -79,7 +79,7 @@ export async function resolveAccess(user) {
     }
   }
 
-  rows = withIsoDates(rows, ['revoked_at']);
+  rows = rowsIsoDates(rows, ['revoked_at']);
   const active = rows.find(r => !r.revoked_at);
   if (active) return { role: 'advisor', owner_user_id: String(active.owner_user_id) };
   if (rows.length) return { role: 'revoked', owner_user_id: String(rows[0].owner_user_id) };
