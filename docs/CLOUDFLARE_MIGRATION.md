@@ -111,6 +111,14 @@ membership revocation. See `functions/_lib/workspace.js`.
 
 ## 4. Data migration runbook
 
+**No local tooling?** There is a `workflow_dispatch` GitHub Action
+(`.github/workflows/migrate.yml`, "Data migration") that runs this entire
+runbook from the GitHub website: Actions → Data migration → Run workflow with
+mode `plan` first (writes nothing), then mode `apply`. It requires repo secrets
+`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (delete both after a green apply),
+`CLOUDFLARE_API_TOKEN` (Pages + D1 + R2 edit) and `CLOUDFLARE_ACCOUNT_ID`.
+The steps below are the same runbook for a local terminal.
+
 Prereq env (terminal only — never committed):
 
 ```bash
