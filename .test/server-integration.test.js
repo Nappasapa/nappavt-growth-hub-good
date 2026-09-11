@@ -115,6 +115,8 @@ function run(cmd, args, extraEnv = {}) {
       console.log('  FAIL - server-log: ' + line.replace(/["]/g, "'").slice(0, 300));
     }
   }
+  const failLines = smoke.out.split('\n').filter(l => / FAIL - /.test(l));
+  console.log(`  FAIL - smoke-fail-count: ${failLines.length} exit=${smoke.code}`);
   t('dev-smoke: full E2E green (auth+state+notes+clips+bot)', smokeOk, smoke.out.split('\n').filter(l => /FAIL|error/i.test(l)).join('\n').slice(-600));
 
   console.log(`\nserver-integration: ${pass} passed, ${fail} failed`);
