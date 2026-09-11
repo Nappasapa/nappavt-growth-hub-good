@@ -206,7 +206,9 @@ export async function login(req, email, password) {
   const user = await findUserByEmail(String(email || '').trim());
   // Always run a verify (constant shape against user-enumeration timing).
   const hashOk = verifyPassword(password, user && user.password_hash ? user.password_hash : null);
-  if (!user || !user.password_hash || !hashOk) return null;
+  if (!user) { log.info('login failed — no user for', maskEmail(String(email || '').trim())); return null; }
+  if (!user.password_hash) { log.warn('login failed — no password set for', maskEmail(String(email || '').trim())); return null; }
+  if (!hashOk) { log.info('login failed — password mismatch for', maskEmail(String(email || '').trim())); return null; }
   const token = await createSession(user.id);
   return { user: { id: String(user.id), email: String(user.email) }, token };
 }

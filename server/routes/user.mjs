@@ -2,7 +2,7 @@
 // /api/auth/login, /api/auth/logout, /api/invites/signup-claim.
 
 import { sendJson, readJsonBody } from '../http.mjs';
-import { pingDb, dbToIso, nowIso } from '../db.mjs';
+import { pingDb, dbToIso, nowIso, queryOne } from '../db.mjs';
 import { config } from '../config.mjs';
 import {
   requireUser, login, logout, loginThrottleCheck, loginThrottleRecord,
@@ -10,7 +10,7 @@ import {
   clearSessionCookieHeader,
 } from '../auth.mjs';
 import { resolveAccess } from '../workspace.mjs';
-import { log } from '../log.mjs';
+import { log, maskEmail } from '../log.mjs';
 
 export const routes = [];
 
@@ -112,8 +112,15 @@ route('POST', '/api/invites/signup-claim', async ({ req, res }) => {
     return sendJson(res, { error: result.error }, { status: result.status });
   }
   loginThrottleRecord(req, email, true);
+  const probe = await queryOne('SELECT id FROM users WHERE email = ?', [email]);
+  if (probe) log.info('signup-claim: user row committed for', maskEmail(email));
+  else log.error('signup-claim: USER ROW MISSING after commit for', maskEmail(email));
   const session = await login(req, email, password);
-  if (!session) return sendJson(res, { error: 'internal_error' }, { status: 500 });
+  if (!session) {
+    // Should be unreachable — prove what part of the fresh-login contract broke.
+    log.error('signup-claim: immediate login self-check failed for', maskEmail(email));
+    return sendJson(res, { error: 'internal_error' }, { status: 500 });
+  }
   res.setHeader('set-cookie', makeSessionCookie(session.token));
   log.info('advisor account created + invite claimed for owner', result.owner_user_id);
   return sendJson(res, { ok: true, user: session.user, role: result.role, owner_user_id: result.owner_user_id });
