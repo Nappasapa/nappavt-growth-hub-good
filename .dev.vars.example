@@ -1,0 +1,16 @@
+# Local development variables for `npm run dev` (wrangler pages dev).
+# Copy to `.dev.vars` — that file is gitignored and is NEVER deployed.
+#
+# Local dev mode: as long as ACCESS_TEAM_DOMAIN is unset, every request is
+# treated as this identity. That's how you sign in locally without Cloudflare
+# Access.
+DEV_BYPASS_EMAIL=owner@localhost.dev
+
+# Production-only (set these in Pages project → Settings → Variables and Secrets):
+# ACCESS_TEAM_DOMAIN=your-team.cloudflareaccess.com
+# ACCESS_AUD=<Application Audience tag of your Access application>
+# OWNER_EMAIL=the-email-you-sign-in-with@example.com
+
+# Shared secret the Nappa Bot uses with /api/bot/*.
+# Generate a strong one:  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+BOT_SYNC_TOKEN=replace-with-a-long-random-string

@@ -6,3 +6,11 @@ youtube_token.json
 youtube_pending.json
 token.json
 .env
+
+# Cloudflare migration additions
+.dev.vars
+.wrangler/
+migration-data/
+dist/
+node_modules/
+package-lock.json

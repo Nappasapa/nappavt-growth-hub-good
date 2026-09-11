@@ -1,0 +1,20 @@
+{
+  "name": "nappavt-growth-hub",
+  "private": true,
+  "version": "2.0.0",
+  "description": "NappaVT Growth Hub dashboard — Cloudflare Pages + Pages Functions + D1 + R2 (migrated off Supabase)",
+  "scripts": {
+    "dev": "wrangler pages dev . --port 8788",
+    "test": "npm --prefix .test test",
+    "migrate:local": "wrangler d1 migrations apply nappavt-growth-hub --local",
+    "migrate:remote": "wrangler d1 migrations apply nappavt-growth-hub --remote",
+    "export:supabase": "node scripts/export-supabase.mjs",
+    "import:d1": "node scripts/import-d1.mjs",
+    "migrate:clips": "node scripts/migrate-clips.mjs",
+    "verify": "node scripts/verify-migration.mjs",
+    "smoke": "node scripts/dev-smoke.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

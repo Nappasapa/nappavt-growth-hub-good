@@ -1,0 +1,44 @@
+# NappaVT Growth Hub — Cloudflare Pages project configuration
+# Deploy: wrangler pages deploy   (GitHub Actions builds ./dist first, see .github/workflows/main.yml)
+# Local dev: npm run dev  (wrangler pages dev .)
+name = "nappavt-growth-hub"
+compatibility_date = "2026-01-01"
+pages_build_output_dir = "dist"
+
+# ---------------------------------------------------------------------------
+# D1 database (binding name used by the Pages Functions: env.DB)
+# Create with:        wrangler d1 create nappavt-growth-hub
+# Then paste the returned database_id below and apply migrations:
+#                     wrangler d1 migrations apply nappavt-growth-hub --remote
+# ---------------------------------------------------------------------------
+[[d1_databases]]
+binding = "DB"
+database_name = "nappavt-growth-hub"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"   # ← paste `wrangler d1 create` output here
+migrations_dir = "migrations"
+
+# ---------------------------------------------------------------------------
+# R2 bucket for legacy clip storage (binding name used by the Functions: env.CLIPS)
+# Create with: wrangler r2 bucket create nappavt-growth-hub-clips
+# The bucket stays private; clips are served through /api/clips/* with auth.
+# In local dev an empty local bucket is created automatically.
+# ---------------------------------------------------------------------------
+[[r2_buckets]]
+binding = "CLIPS"
+bucket_name = "nappavt-growth-hub-clips"
+
+# ---------------------------------------------------------------------------
+# Non-secret environment variables.
+# Secrets (BOT_SYNC_TOKEN) go in Pages project settings → Variables and Secrets,
+# or `.dev.vars` locally (see .dev.vars.example).
+# ---------------------------------------------------------------------------
+[vars]
+# Cloudflare Access — required in production. Get these from
+# Zero Trust → Settings → Custom pages (team domain) and your
+# Access application → Overview (Application Audience / AUD tag).
+# ACCESS_TEAM_DOMAIN = "your-team.cloudflareaccess.com"
+# ACCESS_AUD = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# Owner email — the Google/email you sign into Cloudflare Access with.
+# Strongly recommended so the owner role is assigned deterministically.
+# OWNER_EMAIL = "you@example.com"
+ENVIRONMENT = "production"
