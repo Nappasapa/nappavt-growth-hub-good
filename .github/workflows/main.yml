@@ -39,8 +39,11 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci && npm --prefix .test ci
+      - name: Install dependencies (root)
+        run: npm --version && node --version && npm ci
+
+      - name: Install dependencies (test suite)
+        run: npm --prefix .test ci
 
       - name: Syntax check all backend files
         run: |
