@@ -4579,13 +4579,21 @@ html[data-theme="nappa"] #dashboardShell:after{
  <h1>Sign in</h1>
  <div class="sub">Your private creator workspace.</div>
 
- <div class="auth-actions" style="margin-top:14px">
- <button class="btn" id="accessSignIn" type="button">Sign in securely</button>
- </div>
+ <form class="auth-actions" id="loginForm" style="margin-top:14px" autocomplete="on">
+ <label style="display:block;text-align:left;margin-bottom:8px">
+ <span class="muted" style="font-size:11px">Email</span>
+ <input id="loginEmail" name="email" type="email" autocomplete="username" required style="width:100%" placeholder="you@example.com">
+ </label>
+ <label style="display:block;text-align:left;margin-bottom:10px">
+ <span class="muted" style="font-size:11px">Password</span>
+ <input id="loginPassword" name="password" type="password" autocomplete="current-password" required style="width:100%" placeholder="••••••••••••">
+ </label>
+ <button class="btn" id="accessSignIn" type="submit">Sign in securely</button>
+ </form>
 
- <div id="inviteNotice" class="note" style="display:none;margin-top:12px">👀 Advisor invite detected. Sign in to open the shared NappaVT Growth Hub — your invite is claimed automatically.</div>
+ <div id="inviteNotice" class="note" style="display:none;margin-top:12px">👀 Advisor invite detected. Sign in with the email and password you choose below — your account is created and the invite claimed in one step.</div>
  <div id="authMessage" class="auth-message" role="status" aria-live="polite"></div>
- <div class="auth-note">Sign-in is handled by Cloudflare Access with a one-time email code — no password needed. Use the email address the Growth Hub Owner approved.</div>
+ <div class="auth-note">Private workspace — accounts exist only for the Owner and invited Advisors. Sessions are server-side with a secure httpOnly cookie; nothing sensitive ever lives in this file.</div>
  </div>
 </div>
 
@@ -5158,7 +5166,7 @@ html[data-theme="nappa"] #dashboardShell:after{
  <div class="grid">
  <div class="card span12">
  <h2>Backup & transfer</h2>
- <div class="note">When signed in, your dashboard autosaves locally and to the cloud (Cloudflare D1). Your phone and PC can load the same dashboard.</div>
+ <div class="note">When signed in, your dashboard autosaves locally and to the cloud (your Growth Hub server database). Your phone and PC can load the same dashboard.</div>
  <div class="row" style="margin-top:12px">
  <button class="btn" id="exportBackup">Download backup</button>
  <label class="btn secondary" style="display:inline-flex;align-items:center">Import backup<input type="file" id="importBackup" accept=".json" style="display:none"></label>
@@ -5169,7 +5177,7 @@ html[data-theme="nappa"] #dashboardShell:after{
  <div class="card span12">
  <h2>Clip storage</h2>
  <div class="note">
-            New uploads go to your private Google Drive folder “NappaVT Growth Hub Clips” and are only removed when you explicitly delete them — Drive clips are not auto-cleaned. Older uploads remain in the Growth Hub’s cloud clip storage (Cloudflare R2) and can still be cleaned up automatically after posting. Twitch clips stay on Twitch and use none of your cloud clip storage. Your post history stays in the Growth Hub.
+            New uploads go to your private Google Drive folder “NappaVT Growth Hub Clips” and are only removed when you explicitly delete them — Drive clips are not auto-cleaned. Older uploads remain in the Growth Hub’s cloud clip storage and can still be cleaned up automatically after posting. Twitch clips stay on Twitch and use none of your cloud clip storage. Your post history stays in the Growth Hub.
  </div>
 
  <div class="formgrid" style="margin-top:12px">
@@ -5193,7 +5201,7 @@ html[data-theme="nappa"] #dashboardShell:after{
  <h2>Social analytics connections</h2>
  <div class="note">Credentials and OAuth refresh tokens live only on Craftnode. They are never placed in this HTML or the cloud dashboard state.</div>
  <div class="formgrid" style="margin-top:12px">
- <div class="f12"><h3>Growth Hub connection (Nappa Bot)</h3><div class="muted" id="botConnectionInfo">Craftnode env: <b>GROWTH_HUB_API_BASE</b> (this page's origin), <b>GROWTH_HUB_USER_ID</b> (loaded after sign-in) and <b>BOT_SYNC_TOKEN</b> (shared secret from the Cloudflare Pages project). The bot uses /api/bot/* — never any browser token.</div></div>
+ <div class="f12"><h3>Growth Hub connection (Nappa Bot)</h3><div class="muted" id="botConnectionInfo">Craftnode env: <b>GROWTH_HUB_API_BASE</b> (this page's origin), <b>GROWTH_HUB_USER_ID</b> (loaded after sign-in) and <b>BOT_SYNC_TOKEN</b> (shared secret set on the Growth Hub backend). The bot uses /api/bot/* — never any browser token.</div></div>
  <div class="f6"><h3>YouTube</h3><div class="muted">Craftnode env: <b>YOUTUBE_CLIENT_ID</b>, <b>YOUTUBE_CLIENT_SECRET</b>. Enable YouTube Data API v3 + YouTube Analytics API. Redirect URI defaults to <b>http://127.0.0.1:53682/callback</b>.</div></div>
  <div class="f6"><h3>TikTok</h3><div class="muted">Craftnode env: <b>TIKTOK_CLIENT_KEY</b>, <b>TIKTOK_CLIENT_SECRET</b>. Add Login Kit + TikTok API / Display API with <b>video.list</b>. Redirect URI defaults to <b>http://127.0.0.1:53683/callback/</b>.</div></div>
  </div>
@@ -5224,7 +5232,7 @@ html[data-theme="nappa"] #dashboardShell:after{
  <div class="card span12">
  <h2>Login setup</h2>
  <div class="note">
-            Sign-in is handled by Cloudflare Access (one-time email code) and your data syncs to Cloudflare D1. Every request is checked server-side: only your approved accounts get in; Advisor accounts can only read the shared workspace and write their own feedback notes.
+            Sign-in is a private email+password session (httpOnly cookie) and your data syncs to the Growth Hub's own server database. Every request is checked server-side: only your approved accounts get in; Advisor accounts can only read the shared workspace and write their own feedback notes.
  </div>
  </div>
  </div>
@@ -5256,15 +5264,16 @@ html[data-theme="nappa"] #dashboardShell:after{
 window.SIDEBAR_PRIMARY_PAGES=new Set(['dashboard','twitchclips','queue','contentperformance','streams','analytics','settings']);
 window.SIDEBAR_MORE_PAGES=['streamlibrary','clips','feedback','ideas'];
 /* ==========================================================
-   CLOUDFLARE BACKEND
-   The dashboard talks to same-origin Pages Functions under /api.
-   Authentication is Cloudflare Access: the Functions validate the
-   Access JWT server-side, so no API keys, passwords or service
-   credentials ever live in this file.
+   BACKEND (Node.js + MariaDB)
+   The dashboard talks to the same-origin Growth Hub backend under /api
+   (Node.js + MariaDB). Authentication is a server-side session checked on
+   every request, so no API keys, passwords or service credentials ever
+   live in this file.
 ========================================================== */
-const PUBLIC_APP_URL='https://nappavt-growth-hub.pages.dev';
-const ACCESS_LOGOUT_URL='/cdn-cgi/access/logout';
-let authVia=''; // 'access' | 'dev' — returned by /api/me
+// The backend serves this page and the API on one origin, so origin is dynamic
+// (invite links must follow the deployment domain).
+const PUBLIC_APP_URL=(()=>{try{return location.origin}catch(e){return ''}})()||'';
+let authVia=''; // 'session' — returned by /api/me
 
 // Thin API client. Resolves {ok,status,data}; throws only on network failure.
 // A mid-session 401 (expired Access session) locks the UI back to the sign-in
@@ -5283,7 +5292,7 @@ function apiErrorMessage(res,fallback){
   const code=res&&res.data&&res.data.error?String(res.data.error):'';
   const table={
     not_authenticated:'Your secure sign-in session expired. Sign in again.',
-    auth_not_configured:'Secure sign-in is not configured yet. The Growth Hub Owner needs to finish the Cloudflare Access setup.',
+    auth_not_configured:'Secure sign-in is not configured yet. The Growth Hub Owner needs to finish the backend setup.',
     no_access:'This account does not have access to the NappaVT Growth Hub.',
     owner_only:'Only the Growth Hub Owner can do that.',
     advisor_only:'Only Advisor accounts can do that.',
@@ -5308,7 +5317,7 @@ function handleAuthLost(){
 }
 function clipApiUrl(path){return '/api/clips/'+String(path||'').split('/').map(encodeURIComponent).join('/')}
 
-// Advisor auth must always return to the public Cloudflare deployment.
+// Invite links are built against the current origin of this deployment.
 const URL_INVITE_TOKEN=(new URLSearchParams(location.search).get('invite')||'').trim();
 if(URL_INVITE_TOKEN){try{sessionStorage.setItem('growthHubPendingInvite',URL_INVITE_TOKEN)}catch(e){}}
 const INVITE_TOKEN=(URL_INVITE_TOKEN||(()=>{try{return sessionStorage.getItem('growthHubPendingInvite')||''}catch(e){return ''}})()).trim();
@@ -5344,22 +5353,54 @@ function openLogin(){
 const inviteNotice=document.getElementById('inviteNotice');
 if(INVITE_TOKEN&&inviteNotice)inviteNotice.style.display='block';
 
-accessSignInButton?.addEventListener('click',()=>{
-  // Cloudflare Access challenges the browser on reload when the hostname is
-  // protected; in local dev the bypass identity signs in automatically.
-  try{window.location.reload()}catch(e){}
+const loginForm=document.getElementById('loginForm');
+loginForm?.addEventListener('submit',async(ev)=>{
+  ev.preventDefault();
+  const email=(document.getElementById('loginEmail')?.value||'').trim();
+  const password=document.getElementById('loginPassword')?.value||'';
+  if(!email||!password)return;
+  const btn=document.getElementById('accessSignIn');
+  if(btn)btn.disabled=true;
+  authMsg('Signing in…');
+  try{
+    let res;
+    if(INVITE_TOKEN){
+      // Single-step onboarding: create the advisor account + claim the invite.
+      res=await apiFetch('/invites/signup-claim',{method:'POST',body:{token:INVITE_TOKEN,email,password}});
+      if(res.ok){try{sessionStorage.removeItem('growthHubPendingInvite')}catch(e){}window.location.reload();return}
+      if(res.status===409&&res.data&&res.data.error==='email_registered'){
+        // Account exists — plain login; the boot sequence claims the invite.
+        res=await apiFetch('/auth/login',{method:'POST',body:{email,password}});
+        if(res.ok){window.location.reload();return}
+      }
+    }else{
+      res=await apiFetch('/auth/login',{method:'POST',body:{email,password}});
+      if(res.ok){window.location.reload();return}
+    }
+    const table={
+      invalid_credentials:'Wrong email or password.',
+      invalid_login_input:'Enter your email and password.',
+      invalid_email:'That email address does not look right.',
+      invalid_token:'That Advisor invite link is not valid. Ask the Owner for a fresh one.',
+      weak_password:(res.data&&res.data.detail)||'Choose a longer password (at least 8 characters).',
+      rate_limited:'Too many attempts. Wait a few minutes and try again.',
+      email_registered:'That email already has an account — signing you in instead…',
+      service_unavailable:'The database is not reachable right now. Try again in a moment.'
+    };
+    authMsg(table[res.data&&res.data.error]||apiErrorMessage(res,'Sign-in failed. Try again.'),'error');
+  }catch(err){
+    authMsg('The Growth Hub backend is not responding yet. Try again in a moment.','error');
+  }finally{
+    if(btn)btn.disabled=false;
+  }
 });
 
 document.getElementById('signOut').addEventListener('click',async()=>{
   clearTimeout(cloudSaveTimer);
-  const wasAccess=authVia==='access';
+  try{await apiFetch('/auth/logout',{method:'POST'})}catch(e){/* backend may be down; still clear UI */}
   currentUser=null;workspaceOwnerId=null;workspaceRole='unknown';workspaceMember=null;advisorNotes=[];lastRemoteUpdatedAt='';
-  if(wasAccess){
-    // End the Cloudflare Access session; Access presents its own login wall.
-    try{window.location.assign(ACCESS_LOGOUT_URL);return}catch(e){}
-  }
   openLogin();
-  if(!wasAccess)authMsg('Local development mode — you are always signed in as the test account.','');
+  authMsg('Signed out.');
 });
 
 (async()=>{
@@ -5375,10 +5416,10 @@ document.getElementById('signOut').addEventListener('click',async()=>{
     openLogin();
     if(me.status===401){
       authMsg(INVITE_TOKEN
-        ?'Advisor invite detected. Sign in to claim it — the Owner may need to add your email to the Cloudflare Access policy first.'
+        ?'Advisor invite detected. Sign in — or pick a new password — to claim it.'
         :'Sign in to open your Growth Hub.','error');
     }else if(me.status===503){
-      authMsg(apiErrorMessage(me,'Secure sign-in is not configured yet. The Owner needs to finish the Cloudflare Access setup.'),'error');
+      authMsg(apiErrorMessage(me,'Secure sign-in is not configured yet. The Owner needs to finish the backend setup.'),'error');
     }
   }catch(err){
     console.warn('Growth Hub session check failed:',err);
@@ -6227,7 +6268,7 @@ async function createAdvisorInvite(){
     }
     const token=res.data.token;
     const link=`${PUBLIC_APP_URL}/?invite=${encodeURIComponent(token)}`;
-    box.innerHTML=`<div class="invite-box"><b>Advisor invite — expires in 7 days</b><br><span id="advisorInviteLink">${esc(link)}</span><div class="row" style="margin-top:8px"><button class="btn secondary" id="copyAdvisorInvite">Copy invite link</button></div><div class="muted" style="margin-top:6px">Also add the advisor's email in Cloudflare Zero Trust → Access → your Growth Hub application → policy, so their sign-in code is allowed through.</div></div>`;
+    box.innerHTML=`<div class="invite-box"><b>Advisor invite — expires in 7 days</b><br><span id="advisorInviteLink">${esc(link)}</span><div class="row" style="margin-top:8px"><button class="btn secondary" id="copyAdvisorInvite">Copy invite link</button></div><div class="muted" style="margin-top:6px">The advisor just opens the link, picks their email + password, and gets in — accounts are created when the invite is claimed.</div></div>`;
     document.getElementById('copyAdvisorInvite')?.addEventListener('click',async e=>{
       try{await navigator.clipboard.writeText(link);e.currentTarget.textContent='Copied ✓'}catch(err){prompt('Copy this invite link:',link)}
     });
@@ -7112,7 +7153,7 @@ function gdriveWaitForGsi(timeoutMs=15000){
         resolve();
       }else if(Date.now()-started>timeoutMs){
         clearInterval(timer);
-        reject(new DriveError('Google Identity Services did not load. Make sure you are on https://nappavt-growth-hub.pages.dev and that the browser is online.','auth'));
+        reject(new DriveError('Google Identity Services did not load. Check that the browser is online and nothing is blocking google.com.','auth'));
       }
     },150);
   });
@@ -7694,7 +7735,7 @@ function updateBotConnectionInfo(){
   if(!el)return;
   const base=window.location&&window.location.origin?window.location.origin:'';
   const uid=workspaceOwnerId?String(workspaceOwnerId):'—';
-  el.innerHTML='Craftnode env: <b>GROWTH_HUB_API_BASE</b>='+esc(base)+' · <b>GROWTH_HUB_USER_ID</b>='+esc(uid)+' · <b>BOT_SYNC_TOKEN</b>=shared secret from the Cloudflare Pages project (never visible in the browser). The bot uses /api/bot/* on this origin — never any browser token.';
+  el.innerHTML='Craftnode env: <b>GROWTH_HUB_API_BASE</b>='+esc(base)+' · <b>GROWTH_HUB_USER_ID</b>='+esc(uid)+' · <b>BOT_SYNC_TOKEN</b>=shared secret set on this backend (never visible in the browser). The bot uses /api/bot/* on this origin — never any browser token.';
 }
 function updateStorageHint(){
   const hint=document.getElementById('qStorageHint');
@@ -9361,7 +9402,7 @@ function renderIntegrationHealth(){
     return integrationHealthItem(label,status==='connected'?'Connected':status==='reauth'?'Reauth required':'Not connected',value.error||'No browser token is stored here',status==='connected'?'good':status==='reauth'?'warn':'');
   };
   root.innerHTML=[
-    integrationHealthItem('Cloudflare D1',cloudState,cloudDetail,cloudTone),
+    integrationHealthItem('Server database (MariaDB)',cloudState,cloudDetail,cloudTone),
     integrationHealthItem('Nappa Bot / Craftnode',botOk?'Syncing':'Not verified',botDetail,botOk?'good':botError?'warn':''),
     integrationHealthItem('Twitch',twitch.connected?'Connected':'Not connected',twitchError||`Username ${twitch.login||'NappaVT'} · ${twitch.connected?'verified':'awaiting verified sync'}`,twitch.connected?'good':twitchError?'warn':''),
     platform('instagram','Instagram'),

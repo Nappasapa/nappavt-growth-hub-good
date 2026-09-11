@@ -1,39 +1,38 @@
-// Step 3 of the data migration: copy legacy clip objects from Supabase Storage
-// (bucket "clips") into the R2 bucket "nappavt-growth-hub-clips".
+// Step 3 of the data migration: copy legacy clip objects OUT of Supabase
+// Storage ("clips" bucket) INTO this backend's object store — over the bot
+// channel, so it works from any machine (local shell or GitHub Action):
 //
-//   DRY RUN (default — only plans):
-//     SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/migrate-clips.mjs
-//   APPLY:
-//     SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/migrate-clips.mjs --apply
+//   dry run (plan only):
+//     GROWTH_HUB_API_BASE=https://hub.example.com BOT_SYNC_TOKEN=… \
+//     SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… \
+//     node scripts/migrate-clips.mjs
+//   apply:
+//     same env + --apply
 //
-// Uploads go through `wrangler r2 object put`, which uses your own wrangler
-// login — no R2 API credentials are needed or stored anywhere. Re-running is
-// safe: objects are put under their original keys (R2 put overwrites), and a
-// clip-manifest.json in migration-data/ tracks what succeeded.
-//
-// Reads the object list from migration-data/export.json (run export first), or
-// re-lists the bucket when absent.
+// Uploads go through PUT /api/bot/clips/<key> (bot bearer auth, streamed).
+// Idempotent/resumable via migration-data/clip-manifest.json. Content-Type
+// is inferred server-side from the extension (same table as before).
 
-import { readFileSync, writeFileSync, existsSync, createWriteStream, unlinkSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import { pipeline } from 'node:stream/promises';
-import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 
 const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const API_BASE = (process.env.GROWTH_HUB_API_BASE || '').replace(/\/$/, '');
+const BOT_TOKEN = process.env.BOT_SYNC_TOKEN || '';
 const APPLY = process.argv.includes('--apply');
-const LOCAL = process.argv.includes('--local'); // rehearsal against local R2
-const BUCKET = process.env.CLIPS_BUCKET || 'nappavt-growth-hub-clips';
 
 if (!SUPABASE_URL || !SERVICE_KEY) {
-  console.error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in the environment first.');
+  console.error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY first (export shell).');
+  process.exit(1);
+}
+if (APPLY && (!API_BASE || !BOT_TOKEN)) {
+  console.error('--apply needs GROWTH_HUB_API_BASE (e.g. https://hub.example.com) and BOT_SYNC_TOKEN.');
   process.exit(1);
 }
 
 let objects = null;
 if (existsSync('migration-data/export.json')) {
-  const doc = JSON.parse(readFileSync('migration-data/export.json', 'utf8'));
-  objects = doc.storage_objects || [];
+  objects = JSON.parse(readFileSync('migration-data/export.json', 'utf8')).storage_objects || [];
 }
 if (!objects) {
   console.error('migration-data/export.json missing — run scripts/export-supabase.mjs first.');
@@ -46,12 +45,17 @@ if (existsSync('migration-data/clip-manifest.json')) {
 }
 const saveManifest = () => writeFileSync('migration-data/clip-manifest.json', JSON.stringify(manifest, null, 2));
 
+const dataOrStream = res => {
+  if (!res.ok || !res.body) throw new Error(`download failed: HTTP ${res.status}`);
+  return res.body; // web stream → passed straight into upstream fetch (true streaming)
+};
+
 (async () => {
   const totalBytes = objects.reduce((a, o) => a + (o.size || 0), 0);
   console.log(`Plan: ${objects.length} objects, ${(totalBytes / 1024 / 1024).toFixed(1)} MB total`);
   const todo = objects.filter(o => !manifest.copied[o.key]);
   console.log(todo.length
-    ? `${todo.length} object(s) still to copy ${APPLY ? '(--apply: copying now)' : '(dry run — pass --apply to copy)'}`
+    ? `${todo.length} object(s) still to copy ${APPLY ? '(--apply: uploading now)' : '(dry run — pass --apply)'}`
     : 'nothing left to copy');
 
   if (!APPLY) {
@@ -62,19 +66,27 @@ const saveManifest = () => writeFileSync('migration-data/clip-manifest.json', JS
 
   let ok = 0; let failed = 0;
   for (const obj of todo) {
-    const tmp = `migration-data/.tmp-${createHash('sha1').update(obj.key).digest('hex')}`;
     try {
-      const res = await fetch(`${SUPABASE_URL}/storage/v1/object/clips/${obj.key.split('/').map(encodeURIComponent).join('/')}`, {
-        headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
-      });
-      if (!res.ok || !res.body) throw new Error(`download failed: HTTP ${res.status}`);
-      await pipeline(res.body, createWriteStream(tmp));
+      const src = await fetch(
+        `${SUPABASE_URL}/storage/v1/object/clips/${obj.key.split('/').map(encodeURIComponent).join('/')}`,
+        { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
+      );
+      const body = dataOrStream(src);
 
-      execFileSync('npx', [
-        'wrangler', 'r2', 'object', 'put', `${BUCKET}/${obj.key}`,
-        '--file', tmp, LOCAL ? '--local' : '--remote',
-        ...(obj.mimetype ? ['--content-type', obj.mimetype] : []),
-      ], { stdio: ['ignore', 'pipe', 'pipe'] });
+      const up = await fetch(`${API_BASE}/api/bot/clips/${obj.key.split('/').map(encodeURIComponent).join('/')}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${BOT_TOKEN}`,
+          'content-type': obj.mimetype || 'application/octet-stream',
+          ...(obj.size ? { 'content-length': String(obj.size) } : {}),
+        },
+        body,
+        duplex: 'half', // node fetch requires this for streamed bodies
+      });
+      if (!up.ok) {
+        const detail = await up.text().catch(() => '');
+        throw new Error(`upload failed: HTTP ${up.status} ${detail.slice(0, 200)}`);
+      }
 
       manifest.copied[obj.key] = { size: obj.size ?? null, copied_at: new Date().toISOString() };
       delete manifest.failed[obj.key];
@@ -84,8 +96,6 @@ const saveManifest = () => writeFileSync('migration-data/clip-manifest.json', JS
       manifest.failed[obj.key] = String(err.message || err).slice(0, 300);
       failed++;
       console.error(`  FAILED ${obj.key}: ${manifest.failed[obj.key]}`);
-    } finally {
-      try { unlinkSync(tmp); } catch {}
     }
   }
   saveManifest();

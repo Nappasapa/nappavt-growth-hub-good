@@ -1,20 +1,31 @@
 {
   "name": "nappavt-growth-hub",
   "private": true,
-  "version": "2.0.0",
-  "description": "NappaVT Growth Hub dashboard — Cloudflare Pages + Pages Functions + D1 + R2 (migrated off Supabase)",
-  "scripts": {
-    "dev": "wrangler pages dev . --port 8788",
-    "test": "npm --prefix .test test",
-    "migrate:local": "wrangler d1 migrations apply nappavt-growth-hub --local",
-    "migrate:remote": "wrangler d1 migrations apply nappavt-growth-hub --remote",
-    "export:supabase": "node scripts/export-supabase.mjs",
-    "import:d1": "node scripts/import-d1.mjs",
-    "migrate:clips": "node scripts/migrate-clips.mjs",
-    "verify": "node scripts/verify-migration.mjs",
-    "smoke": "node scripts/dev-smoke.mjs"
+  "version": "3.0.0",
+  "description": "NappaVT Growth Hub dashboard — Node.js backend + MariaDB (supersedes the Supabase and Cloudflare backends)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
   },
-  "devDependencies": {
-    "wrangler": "^4.0.0"
+  "scripts": {
+    "dev": "node server/index.mjs",
+    "start": "node server/index.mjs",
+    "db:create": "node server/migrate.mjs create",
+    "migrate": "node server/migrate.mjs up",
+    "migrate:status": "node server/migrate.mjs status",
+    "migrate:down": "node server/migrate.mjs down",
+    "user:create": "node server/cli.mjs user:create",
+    "user:password": "node server/cli.mjs user:password",
+    "user:list": "node server/cli.mjs user:list",
+    "db:check": "node server/cli.mjs db:check",
+    "export:supabase": "node scripts/export-supabase.mjs",
+    "import:mariadb": "node scripts/import-mariadb.mjs",
+    "migrate:clips": "node scripts/migrate-clips.mjs",
+    "verify": "node scripts/verify-mariadb.mjs",
+    "smoke": "node scripts/dev-smoke-node.mjs",
+    "test": "npm --prefix .test test"
+  },
+  "dependencies": {
+    "mariadb": "^3.5.4"
   }
 }

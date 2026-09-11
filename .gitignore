@@ -1,16 +1,11 @@
-__pycache__/
-.DS_Store
-# YouTube OAuth reconnect fix — never commit runtime credentials.
-backend_reference/.runtime/
-youtube_token.json
-youtube_pending.json
-token.json
+node_modules/
+dist/
+data/
 .env
-
-# Cloudflare migration additions
+.env.local
+.env.*.local
 .dev.vars
 .wrangler/
 migration-data/
-dist/
-node_modules/
-package-lock.json
+*.log
+.DS_Store
