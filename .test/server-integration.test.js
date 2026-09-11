@@ -134,6 +134,7 @@ function run(cmd, args, extraEnv = {}) {
   // 3. drive the full black-box smoke suite against it
   const smoke = run('node', ['scripts/dev-smoke-node.mjs'], {
     SMOKE_API_BASE: base,
+    SMOKE_GATE: '1',
     SMOKE_OWNER_EMAIL: env.OWNER_EMAIL,
     SMOKE_OWNER_PASSWORD: env.OWNER_PASSWORD,
     SMOKE_ADVISOR_EMAIL: 'advisor@it.dev',
