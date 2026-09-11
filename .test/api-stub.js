@@ -1,4 +1,4 @@
-// Mock backend for the Growth Hub Pages Functions API (/api/*).
+// Mock backend for the Growth Hub same-origin API (/api/*).
 // Implements the real endpoints' contract closely enough for DOM tests:
 // state GET/PUT with `since`/optimistic concurrency, revision markers,
 // invites/claim, members/revoke, notes CRUD, clip HEAD/DELETE.

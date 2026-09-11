@@ -1,48 +1,75 @@
-name: Deploy NappaVT Growth Hub
+name: CI — tests & build
 
 on:
   push:
     branches:
       - main
+      - 'arena/**'
+  pull_request:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: read
-      deployments: write
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-password
+          MARIADB_DATABASE: growthhub_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      TEST_DB_DSN: mysql://root:ci-root-password@127.0.0.1:3306/growthhub_ci
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Prepare dashboard
-        run: |
-          mkdir -p dist/privacy
-          mkdir -p dist/terms
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
 
+      - name: Install dependencies
+        run: npm ci && npm --prefix .test ci
+
+      - name: Syntax check all backend files
+        run: |
+          for f in server/*.mjs server/routes/*.mjs scripts/*.mjs; do
+            node --check "$f" || exit 1
+          done
+
+      - name: Run test suite (unit + dom + integration w/ MariaDB service)
+        run: npm test
+
+      - name: Assemble frontend artifact
+        run: |
+          mkdir -p dist/privacy dist/terms
           cp index.html dist/index.html
           cp tiktokbSoGYzHe5aeNCnsrhIKFW8BguLbCIJxy.txt dist/
           cp privacy/index.html dist/privacy/index.html
           cp terms/index.html dist/terms/index.html
 
-          # Pages Functions: the Growth Hub API lives next to the static site.
-          # Paths /api/* are served by these functions; everything else falls
-          # through to the static assets.
-          cp -r functions dist/functions
-
-      - name: Apply D1 migrations
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx wrangler d1 migrations apply nappavt-growth-hub --remote
-
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=nappavt-growth-hub --branch=main
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          name: growthhub-frontend
+          path: dist
+          retention-days: 14
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Build backend image (proves Dockerfile)
+        run: docker build -t growthhub-backend:ci .

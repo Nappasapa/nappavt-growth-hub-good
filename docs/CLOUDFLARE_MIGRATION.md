@@ -1,3 +1,9 @@
+> ⚠️ **SUPERSEDED — DO NOT USE.** The interim Cloudflare (Pages Functions + D1 + R2)
+> backend described below was replaced in September 2026 by the portable
+> **Node.js + MariaDB** backend in `server/` (docker-compose `mariadb:11`),
+> documented in **`docs/MARIADB_BACKEND.md`**. This file is kept for history
+> only (schema mapping notes are still useful).
+
 # Cloudflare migration master doc — Supabase → Pages Functions + D1 + R2 + Access
 
 The Growth Hub no longer talks to Supabase. The browser app calls a same-origin

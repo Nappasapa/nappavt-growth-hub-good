@@ -96,7 +96,7 @@ export function badOrigin(req, appOrigin) {
 export function matchRoute(routes, method, pathname) {
   for (const route of routes) {
     if (route.method !== method) continue;
-    if (route.pattern.includes(':')) {
+    if (route.pattern.includes(':') || route.pattern.includes('*')) {
       const routeSegs = route.pattern.split('/');
       const pathSegs = pathname.split('/');
       if (routeSegs.length !== pathSegs.length && !route.pattern.endsWith('/*')) continue;

@@ -6,11 +6,10 @@
 // GET  /api/state/revision     → { role, owner_user_id, state_updated_at, notes_updated_at, members_updated_at }
 
 import { sendJson, readJsonBody } from '../http.mjs';
-import { queryOne, exec, nowDb, isoToDb, nowIso, dbToIso } from '../db.mjs';
+import { queryOne, exec, isoToDb, nowIso, dbToIso } from '../db.mjs';
 import { config } from '../config.mjs';
 import { requireUser } from '../auth.mjs';
 import { resolveAccess } from '../workspace.mjs';
-import { log } from '../log.mjs';
 
 export const routes = [];
 const route = (method, pattern, handler) => routes.push({ method, pattern, handler });

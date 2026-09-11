@@ -1,15 +1,19 @@
-# Handoff prompt — Craftnode bot/backend: Supabase → Cloudflare Growth Hub API
+# Handoff prompt — Craftnode bot/backend: Supabase → Growth Hub API (Node.js + MariaDB)
 
 Paste everything below the line into the bot/backend AI session. It is self-contained;
 see also `docs/BACKEND_STORAGE_SCHEMA.md` (queue field contract — still authoritative)
-and `docs/CLOUDFLARE_MIGRATION.md` (infra runbook) in this repo.
+and `docs/MARIADB_BACKEND.md` (infra runbook) in this repo. (The interim
+Cloudflare Pages/D1 backend on this branch was replaced; `docs/CLOUDFLARE_MIGRATION.md`
+is historical only.)
 
 ---
 
 You are working on the existing NappaVT Growth Hub bot/backend (Python, hosted on Craftnode).
 
-The Growth Hub dashboard has been **migrated off Supabase onto Cloudflare**
-(Pages + Pages Functions + D1 + R2 + Cloudflare Access). Your job: repoint the bot
+The Growth Hub dashboard has been **migrated off Supabase onto a portable
+Node.js + MariaDB backend** (no Cloudflare-specific database infrastructure;
+no Supabase). The dashboard and this `/api/bot/*` contract are unchanged —
+only the deployment origin moves. Your job: repoint the bot
 from its direct Supabase data channel to the new **same-origin HTTP API** so Twitch
 clip imports, stream analytics, social analytics, reminders and Discord flows keep
 working unchanged. Do NOT rebuild the bot; do NOT rewrite unrelated systems; do NOT
@@ -27,7 +31,7 @@ IMPORTANT RULES THAT DID NOT CHANGE
 - Never store or log tokens; report configuration by status (set/unset) only.
 
 ======================================================================
-WHAT CHANGED FOR YOU (Supabase → Cloudflare Growth Hub API)
+WHAT CHANGED FOR YOU (Supabase → Growth Hub API)
 ======================================================================
 
 1. STOP calling Supabase entirely for Growth Hub data:
@@ -37,13 +41,13 @@ WHAT CHANGED FOR YOU (Supabase → Cloudflare Growth Hub API)
    All of it. The anon key you had will be revoked after cutover.
 
 2. NEW data channel — plain HTTPS JSON on the dashboard origin:
-   Base URL: the Pages site (e.g. `https://nappavt-growth-hub.pages.dev` — take it
-   from env `GROWTH_HUB_API_BASE`, no trailing slash).
+   Base URL: the deployed backend origin (ask the owner — it serves both
+   dashboard and API; take it from env `GROWTH_HUB_API_BASE`, no trailing slash).
 
    AUTH (every request): header
      `Authorization: Bearer <BOT_SYNC_TOKEN>`   (or `X-Nappa-Bot-Key: <BOT_SYNC_TOKEN>`)
    `BOT_SYNC_TOKEN` is a shared secret stored on Craftnode env AND as an encrypted
-   secret on the Cloudflare Pages project. It is NOT a user token and never enters
+   secret on the backend. It is NOT a user token and never enters
    a browser. Responses: 401 wrong/missing token · 403 forbidden · 503 if the
    server secret is not configured.
 
@@ -125,9 +129,10 @@ IMPLEMENTATION PLAN
 ======================================================================
 CRAFTNODE CONFIG (exact env to add — real values, none dummy)
 ======================================================================
-- `GROWTH_HUB_API_BASE=https://nappavt-growth-hub.pages.dev` (no trailing slash)
+- `GROWTH_HUB_API_BASE=https://<your-hub-origin>` (no trailing slash — the
+  dashboard and API are same origin now; get the value from the hub owner)
 - `GROWTH_HUB_USER_ID=<owner id from dashboard Settings page>`
-- `BOT_SYNC_TOKEN=<the shared secret generated for the Pages project secret>`
+- `BOT_SYNC_TOKEN=<the shared secret set on the backend deployment>`
 Remove after verification: `SUPABASE_URL`, `SUPABASE_ANON_KEY`/service keys.
 No new pip dependencies required if the bot already has requests/httpx.
 

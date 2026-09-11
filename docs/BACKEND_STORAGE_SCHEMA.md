@@ -6,11 +6,12 @@ this document. If the bot was implemented against a different field naming (e.g.
 `storage_provider` / `drive_file_id`), it WILL misclassify Drive clips as legacy Supabase and break.
 
 > **2026-09 infrastructure migration — read this first.** The field contract below is
-> unchanged, but the *transport* moved off Supabase: state now lives in Cloudflare D1 and
+> unchanged, but the *transport* moved off Supabase: state now lives in **MariaDB** and
 > is read/written through the Growth Hub API (`/api/state` for the dashboard,
-> `/api/bot/state` for the bot, bearer-token auth). Legacy `videoPath` clip bytes moved to
-> private R2 behind `/api/bot/clips/<key>` (no more signed URLs). See
-> `docs/BOT_HANDOFF_PROMPT.md` for endpoints and `docs/CLOUDFLARE_MIGRATION.md` for infra.
+> `/api/bot/state` for the bot, bearer-token auth). Legacy `videoPath` clip bytes live
+> on the backend's storage driver (local disk) behind `/api/bot/clips/<key>`
+> (no more signed URLs). See `docs/BOT_HANDOFF_PROMPT.md` for endpoints and
+> `docs/MARIADB_BACKEND.md` for infra.
 > Everywhere this document says "Supabase table `dashboard_state`" read
 > "the single state row of the workspace, served by the API". The literal string
 > `"supabase"` in `storageProvider` still means "legacy cloud clip" — do not rename it.

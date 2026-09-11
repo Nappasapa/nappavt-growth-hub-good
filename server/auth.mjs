@@ -224,42 +224,59 @@ export async function purgeExpiredSessions() {
 // ---- invite-aware signup ---------------------------------------------------
 // POST /api/invites/signup-claim uses this: creates the account and claims the
 // invite in ONE transaction so an advisor link is single-step.
+// Failure at ANY step rolls back — no orphan users, no half-claimed invites.
+class InviteError extends Error {
+  constructor(error, status) { super(error); this.inviteError = error; this.inviteStatus = status; }
+}
+
 export async function signupAndClaim({ email, password, token }) {
   const existing = await findUserByEmail(email);
-  if (existing) {
-    return { error: 'email_registered', status: 409 };
-  }
-  return inTransaction(async (tx) => {
-    const newUser = await (async () => {
-      const id = crypto.randomUUID();
-      await tx.exec('INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)', [
-        id, String(email).toLowerCase(), hashPassword(password), nowDb(),
-      ]);
-      return { id, email: String(email).toLowerCase() };
-    })();
+  if (existing) return { error: 'email_registered', status: 409 };
 
-    const invite = await tx.one(
-      'SELECT token, owner_user_id, expires_at, claimed_by_user_id FROM growth_hub_invites WHERE token = ? FOR UPDATE',
-      [token],
-    );
-    if (!invite) return { error: 'invite_not_found', status: 404 };
-    if (invite.claimed_by_user_id) return { error: 'invite_already_claimed', status: 409 };
-    const inviteIso = dbToIso(invite.expires_at);
-    if (inviteIso && inviteIso <= nowIso()) return { error: 'invite_expired', status: 410 };
+  // Cheap pre-check (re-verified under a row lock inside the transaction).
+  const pre = await queryOne(
+    'SELECT token, owner_user_id, expires_at, claimed_by_user_id FROM growth_hub_invites WHERE token = ?',
+    [token],
+  );
+  if (!pre) return { error: 'invite_not_found', status: 404 };
+  if (pre.claimed_by_user_id) return { error: 'invite_already_claimed', status: 409 };
+  const preIso = dbToIso(pre.expires_at);
+  if (preIso && preIso <= nowIso()) return { error: 'invite_expired', status: 410 };
 
-    const ownerId = String(invite.owner_user_id);
-    const now = nowDb();
-    if (ownerId !== newUser.id) {
-      await tx.exec(
-        `INSERT INTO growth_hub_members (owner_user_id, user_id, email, role, created_at, revoked_at)
-         VALUES (?, ?, ?, 'advisor', ?, NULL)
-         ON DUPLICATE KEY UPDATE revoked_at = NULL, email = VALUES(email)`,
-        [ownerId, newUser.id, newUser.email, now],
+  try {
+    return await inTransaction(async (tx) => {
+      const invite = await tx.one(
+        'SELECT token, owner_user_id, expires_at, claimed_by_user_id FROM growth_hub_invites WHERE token = ? FOR UPDATE',
+        [token],
       );
-    }
-    await tx.exec('UPDATE growth_hub_invites SET claimed_by_user_id = ?, claimed_at = ? WHERE token = ?', [
-      newUser.id, now, token,
-    ]);
-    return { user: newUser, role: ownerId === newUser.id ? 'owner' : 'advisor', owner_user_id: ownerId };
-  });
+      if (!invite) throw new InviteError('invite_not_found', 404);
+      if (invite.claimed_by_user_id) throw new InviteError('invite_already_claimed', 409);
+      const inviteIso = dbToIso(invite.expires_at);
+      if (inviteIso && inviteIso <= nowIso()) throw new InviteError('invite_expired', 410);
+
+      const newUser = { id: crypto.randomUUID(), email: String(email).toLowerCase() };
+      const now = nowDb();
+      await tx.exec('INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)', [
+        newUser.id, newUser.email, hashPassword(password), now,
+      ]);
+
+      const ownerId = String(invite.owner_user_id);
+      if (ownerId !== newUser.id) {
+        await tx.exec(
+          `INSERT INTO growth_hub_members (owner_user_id, user_id, email, role, created_at, revoked_at)
+           VALUES (?, ?, ?, 'advisor', ?, NULL)
+           ON DUPLICATE KEY UPDATE revoked_at = NULL, email = VALUES(email)`,
+          [ownerId, newUser.id, newUser.email, now],
+        );
+      }
+      await tx.exec('UPDATE growth_hub_invites SET claimed_by_user_id = ?, claimed_at = ? WHERE token = ?', [
+        newUser.id, now, token,
+      ]);
+      return { user: newUser, role: ownerId === newUser.id ? 'owner' : 'advisor', owner_user_id: ownerId };
+    });
+  } catch (err) {
+    if (err instanceof InviteError) return { error: err.inviteError, status: err.inviteStatus };
+    if (err && err.code === 'duplicate_key') return { error: 'email_registered', status: 409 };
+    throw err;
+  }
 }
