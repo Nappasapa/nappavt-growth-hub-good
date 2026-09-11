@@ -53,7 +53,27 @@ export async function resolveAccess(env, user) {
   const members = await env.DB.prepare(
     'SELECT owner_user_id, revoked_at FROM growth_hub_members WHERE user_id = ? ORDER BY created_at DESC',
   ).bind(user.id).all();
-  const rows = members.results || [];
+  let rows = members.results || [];
+
+  // Self-healing for migrated memberships: a member row may reference an old
+  // (Supabase-era) user id while the person's verified Access email matches.
+  // Re-bind the row to their live user id once, transparently.
+  if (!rows.length && user.email) {
+    const byEmail = await env.DB.prepare(
+      'SELECT owner_user_id, user_id, revoked_at FROM growth_hub_members WHERE email = ? ORDER BY created_at DESC',
+    ).bind(user.email).all();
+    const found = byEmail.results || [];
+    for (const row of found) {
+      await env.DB.prepare(
+        'UPDATE growth_hub_members SET user_id = ? WHERE owner_user_id = ? AND user_id = ?',
+      ).bind(user.id, String(row.owner_user_id), String(row.user_id)).run();
+    }
+    if (found.length) {
+      console.log('[growth-hub] membership re-bound by email for', maskEmail(user.email));
+      rows = found.map(r => ({ owner_user_id: r.owner_user_id, revoked_at: r.revoked_at }));
+    }
+  }
+
   const active = rows.find(r => !r.revoked_at);
   if (active) return { role: 'advisor', owner_user_id: String(active.owner_user_id) };
   if (rows.length) return { role: 'revoked', owner_user_id: String(rows[0].owner_user_id) };

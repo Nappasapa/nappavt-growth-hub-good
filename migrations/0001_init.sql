@@ -9,7 +9,7 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS users (
   id          TEXT PRIMARY KEY,             -- preserved Supabase auth user UUID when migrated
-  email       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  email       TEXT UNIQUE COLLATE NOCASE,   -- NULL allowed: placeholder rows for migrated members whose Supabase auth email was unavailable; re-bound on their first login
   created_at  TEXT NOT NULL,                -- ISO-8601 UTC
   last_seen_at TEXT
 );
