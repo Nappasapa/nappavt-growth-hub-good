@@ -57,8 +57,13 @@ jobs:
         run: |
           set -o pipefail
           npm test 2>&1 | tee /tmp/gh-test.log || {
+            grep -aE "FAIL - |not ok |Error|CRASH|Suite|smoke|dsn|integrations?" /tmp/gh-test.log \
+              | grep -avE "^\s*$" | head -8 | while IFS= read -r line; do
+              msg=$(echo "$line" | sed -e 's/%/%25/g' -e $'s/\r/%0D/g' -e $'s/\n/%0A/g' | cut -c1-400)
+              printf '::error title=test-failure::%s\n' "$msg"
+            done
             {
-              echo '## ❌ Test suite output (tail)';
+              echo '## Test suite output (tail)';
               echo '```';
               tail -250 /tmp/gh-test.log;
               echo '```';
