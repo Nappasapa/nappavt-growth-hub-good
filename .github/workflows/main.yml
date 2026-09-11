@@ -18,16 +18,18 @@ jobs:
         env:
           MARIADB_ROOT_PASSWORD: ci-root-password
           MARIADB_DATABASE: growthhub_ci
+          MARIADB_USER: growthhub_ci
+          MARIADB_PASSWORD: ci-app-password
         ports:
           - 3306:3306
         options: >-
           --health-cmd="healthcheck.sh --connect --innodb_initialized"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=5
+          --health-retries=10
 
     env:
-      TEST_DB_DSN: mysql://root:ci-root-password@127.0.0.1:3306/growthhub_ci
+      TEST_DB_DSN: mysql://growthhub_ci:ci-app-password@127.0.0.1:3306/growthhub_ci
 
     steps:
       - name: Checkout repository
@@ -52,7 +54,17 @@ jobs:
           done
 
       - name: Run test suite (unit + dom + integration w/ MariaDB service)
-        run: npm test
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/gh-test.log || {
+            {
+              echo '## ❌ Test suite output (tail)';
+              echo '```';
+              tail -250 /tmp/gh-test.log;
+              echo '```';
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
 
       - name: Assemble frontend artifact
         run: |
