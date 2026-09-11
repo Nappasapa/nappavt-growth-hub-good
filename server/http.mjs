@@ -134,17 +134,20 @@ export function notFound(res) {
 }
 
 // Uniform error handling — no stack traces or internals to the client.
+// (NODE_ENV===test only: attach the error detail so the integration suite can
+//  assert on root causes; never present in production responses.)
 export function handleRouteError(res, err, context = 'route') {
+  const debug = process.env.NODE_ENV === 'test' ? { detail: describeError(err), context } : {};
   if (err instanceof DbError) {
     log.error(`${context} db error:`, describeError(err.cause || err));
     if (err.code === 'db_unavailable') return sendJson(res, { error: 'service_unavailable' }, { status: 503 });
-    return sendJson(res, { error: 'internal_error' }, { status: 500 });
+    return sendJson(res, { error: 'internal_error', ...debug }, { status: 500 });
   }
   if (err && err.httpStatus) {
     return sendJson(res, { error: err.errorCode || 'bad_request' }, { status: err.httpStatus });
   }
   log.error(`${context} unhandled:`, describeError(err));
-  sendJson(res, { error: 'internal_error' }, { status: 500 });
+  sendJson(res, { error: 'internal_error', ...debug }, { status: 500 });
 }
 
 export function clientIp(req) {

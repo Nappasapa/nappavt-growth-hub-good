@@ -97,6 +97,40 @@ function run(cmd, args, extraEnv = {}) {
     t('startup log leaks no secrets', !/owner-pass-it-2026|it-bot-token|0123456789abcdef0123456789/.test(serverLog), serverLog.slice(0, 300));
   }
 
+  // 2b. direct probes first (bypasses dev-smoke): owner login + /api/me must work.
+  {
+    const loginRes = await fetch(`${base}/api/auth/login`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: env.OWNER_EMAIL, password: env.OWNER_PASSWORD }),
+    });
+    const loginData = await loginRes.json().catch(() => ({}));
+    t('direct: owner login 200', loginRes.status === 200 && loginData.ok === true, JSON.stringify(loginData).slice(0, 200));
+    const cookie = String(loginRes.headers.get('set-cookie') || '').split(';')[0];
+    const meRes = await fetch(`${base}/api/me`, { headers: { cookie } });
+    const meData = await meRes.json().catch(() => ({}));
+    t('direct: /api/me owner', meRes.status === 200 && meData.role === 'owner', JSON.stringify(meData).slice(0, 250));
+
+    // signup-claim end-to-end, directly:
+    const invRes = await fetch(`${base}/api/invites`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: '{}',
+    });
+    const invData = await invRes.json().catch(() => ({}));
+    t('direct: invite created', invRes.status === 200 && Boolean(invData.token), JSON.stringify(invData).slice(0, 200));
+    if (invData.token) {
+      const scRes = await fetch(`${base}/api/invites/signup-claim`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: invData.token, email: 'probe@it.dev', password: 'probe-pass-it-2026' }),
+      });
+      const scData = await scRes.json().catch(() => ({}));
+      t('direct: signup-claim 200', scRes.status === 200 && scData.ok === true, JSON.stringify(scData).slice(0, 250));
+      const advCookie = String(scRes.headers.get('set-cookie') || '').split(';')[0];
+      const advMeRes = await fetch(`${base}/api/me`, { headers: { cookie: advCookie } });
+      const advMe = await advMeRes.json().catch(() => ({}));
+      t('direct: advisor me=advisor+linkage', advMeRes.status === 200 && advMe.role === 'advisor'
+        && advMe.owner_user_id === meData.id, JSON.stringify(advMe).slice(0, 300));
+    }
+  }
+
   // 3. drive the full black-box smoke suite against it
   const smoke = run('node', ['scripts/dev-smoke-node.mjs'], {
     SMOKE_API_BASE: base,
