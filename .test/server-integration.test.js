@@ -108,6 +108,12 @@ function run(cmd, args, extraEnv = {}) {
   });
   const smokeOk = smoke.code === 0 && !/ FAIL - /.test(smoke.out);
   t('dev-smoke: full E2E green (auth+state+notes+clips+bot)', smokeOk, smoke.out.split('\n').filter(l => /FAIL|error/i.test(l)).join('\n').slice(-600));
+  if (!smokeOk && serverLog) {
+    console.log('\nserver stderr/stdout tail:');
+    for (const line of serverLog.trim().split('\n').slice(-25)) {
+      console.log('  FAIL - server-log: ' + line.replace(/["]/g, "'").slice(0, 280));
+    }
+  }
 
   console.log(`\nserver-integration: ${pass} passed, ${fail} failed`);
   cleanup();
