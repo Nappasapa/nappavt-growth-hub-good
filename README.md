@@ -30,6 +30,9 @@ identity. No build step, no framework.
 npm install
 npm run dev              # local Pages dev server (:8788) with local D1/R2
 npm run smoke            # end-to-end API smoke against the dev server
+                         # (RESETS local D1 for a deterministic first-login owner
+                         #  claim — do not run it while rehearsing a data import;
+                         #  --no-reset skips the wipe)
 npm test                 # full test suite
 npm run migrate:local    # apply D1 schema locally
 npm run migrate:remote   # apply D1 schema to production

@@ -147,6 +147,15 @@ only when the fix landed on this PR branch.
 
 ## Security audit
 
+> **2026-09 update (Cloudflare migration):** the `SUPABASE_ANON_KEY` row below is
+> historical — the key (and every other Supabase artifact) has been **removed**
+> from `index.html` during the Supabase → Cloudflare migration. The hardened
+> identity boundary is now the Cloudflare Access JWT, verified server-side in
+> this repo (`functions/_lib/auth.js`) against the team JWKS; algorithm confusion,
+> tampered payloads, wrong aud/iss, expiry and unknown-kid attacks are covered by
+> `.test/access-jwt.test.js` (17/17).
+> See `docs/CLOUDFLARE_MIGRATION.md`.
+
 Scope: full repository (`index.html`, `privacy/`, `terms/`, TikTok verification file, GitHub Actions workflow).
 
 | Location | Type | Status | Action required |
