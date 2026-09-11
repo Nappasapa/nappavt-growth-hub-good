@@ -108,7 +108,10 @@ function run(cmd, args, extraEnv = {}) {
   });
   const smokeOk = smoke.code === 0 && !/ FAIL - /.test(smoke.out);
   if (!smokeOk && serverLog) {
-    for (const line of serverLog.trim().split('\n').slice(-8)) {
+    const all = serverLog.trim().split('\n');
+    const interesting = all.filter(l => /error|fail|missing|mismatch|post-claim|claim|unhandled|login/i.test(l)).slice(-10);
+    const lines = interesting.length ? interesting : all.slice(-6);
+    for (const line of lines) {
       console.log('  FAIL - server-log: ' + line.replace(/["]/g, "'").slice(0, 300));
     }
   }
