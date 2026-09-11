@@ -1,0 +1,15 @@
+.git
+node_modules
+.test
+migration-data
+data
+dist
+.env
+.env.*
+.dev.vars
+.wrangler
+backend_reference
+docs
+.github
+*.md
+!README.md

@@ -1,0 +1,48 @@
+# Development + simple self-hosting stack:
+#   cp .env.example .env   (edit DB/OWNER/BOT values)
+#   docker compose up -d --build
+# Backend serves the dashboard + API on :8788; MariaDB persists in a volume.
+
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:-growthhub}
+      MARIADB_USER: ${DB_USER:-growthhub}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Set DB_ROOT_PASSWORD in .env}
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [growthhub]
+
+  backend:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DB_HOST: db
+      DB_PORT: "3306"
+    ports:
+      - "${PORT:-8788}:8788"
+    volumes:
+      - clips-data:/app/data
+    networks: [growthhub]
+
+volumes:
+  mariadb-data:
+  clips-data:
+
+networks:
+  growthhub:

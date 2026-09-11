@@ -1,9 +1,20 @@
 # Growth Hub Clip Storage — Frontend ↔ Backend (Nappa Bot) Contract
 
 **Authoritative schema for the Google Drive clip-storage upgrade.**
-The frontend (this repo, PR #1) and the Python bot/backend on Craftnode MUST agree on everything in
+The frontend (this repo) and the Python bot/backend on Craftnode MUST agree on everything in
 this document. If the bot was implemented against a different field naming (e.g. snake_case
 `storage_provider` / `drive_file_id`), it WILL misclassify Drive clips as legacy Supabase and break.
+
+> **2026-09 infrastructure migration — read this first.** The field contract below is
+> unchanged, but the *transport* moved off Supabase: state now lives in **MariaDB** and
+> is read/written through the Growth Hub API (`/api/state` for the dashboard,
+> `/api/bot/state` for the bot, bearer-token auth). Legacy `videoPath` clip bytes live
+> on the backend's storage driver (local disk) behind `/api/bot/clips/<key>`
+> (no more signed URLs). See `docs/BOT_HANDOFF_PROMPT.md` for endpoints and
+> `docs/MARIADB_BACKEND.md` for infra.
+> Everywhere this document says "Supabase table `dashboard_state`" read
+> "the single state row of the workspace, served by the API". The literal string
+> `"supabase"` in `storageProvider` still means "legacy cloud clip" — do not rename it.
 
 ---
 

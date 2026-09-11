@@ -1,4 +1,5 @@
-// Full-stack DOM test: real UI + stubbed Supabase / GIS / Drive transport.
+// Full-stack DOM test: real UI + stubbed Growth Hub API / GIS / Drive transport.
+const { makeApiStub, makeResp } = require('./api-stub.js');
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
@@ -28,7 +29,7 @@ const world = { promptValue: '',
   gisRequests: [], gisMode: 'ok', tokenClientCb: null,
   driveSearches: [], foldersByName: {}, existingFolders: [], // name->id; preseed via existingFolders
   sessions: [], chunkPuts: [], probes: [], fileMeta: {}, driveMode: 'ok',
-  upserts: [], signedUrls: [], removedPaths: [],
+  upserts: [], removedPaths: [],
   openedUrls: [], alerts: [], confirmValue: true,
 };
 
@@ -148,34 +149,14 @@ const dom = new JSDOM(html, {
   pretendToBeVisual: true,
   virtualConsole: vc,
   beforeParse(window) {
-    // ---- Supabase stub ----
-    window.supabase = { createClient: () => ({
-      auth: {
-        getSession: async () => ({ data: { session: { user: { id: 'owner-1', email: 'owner@test.dev' } } } }),
-        onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
-      },
-      from: () => {
-        const q = {
-          select() { return q; }, eq() { return q; }, order() { return q; }, limit() { return q; },
-          maybeSingle: async () => ({ data: null, error: null }),
-          single: async () => ({ data: null, error: null }),
-          insert: async () => ({ error: null }),
-          update() { return { eq: async () => ({ error: null }) }; },
-          delete() { return { eq: async () => ({ error: null }) }; },
-          upsert: async p => { if (world.upsertFails) return { error: { message: 'supabase down' } }; world.upserts.push({ ...p, state: { ...p.state, queue: (p.state.queue || []).map(q => ({ ...q })) } }); return { error: null }; },
-        };
-        return q;
-      },
-      rpc: async name => name === 'growth_hub_access_status'
-        ? { data: { role: 'owner', owner_user_id: 'owner-1' }, error: null }
-        : { data: null, error: null },
-      storage: { from: () => ({
-        createSignedUrl: async p => { world.signedUrls.push(p); return { data: { signedUrl: 'https://signed.example/' + p }, error: null }; },
-        remove: async paths => { world.removedPaths.push(...paths); return { error: null }; },
-      }) },
-      channel() { const ch = { on() { return ch; }, subscribe() { return ch; } }; return ch; },
-      removeChannel() {},
-    }) };
+    // ---- Growth Hub API stub (replaces the old Supabase stub) ----
+    world.removedPaths = world.removedPaths || [];
+    const api = makeApiStub(world);
+    window.fetch = async (url, opts = {}) => {
+      if (String(url).startsWith('/api/')) return api(url, opts);
+      return makeDriveFetch(window)(url, opts);
+    };
+    window.XMLHttpRequest = FakeXHRClass(window);
     // ---- GIS stub ----
     window.google = { accounts: { oauth2: {
       initTokenClient: cfg => ({
@@ -187,7 +168,7 @@ const dom = new JSDOM(html, {
       }),
     } } };
     // ---- Drive transport stubs ----
-    window.fetch = makeDriveFetch(window);
+    // Drive transport is reached through makeDriveFetch via the api-chained fetch above.
     window.XMLHttpRequest = FakeXHRClass(window);
     // ---- UI stubs ----
     window.confirm = () => world.confirmValue;
@@ -366,7 +347,7 @@ async function instance1() {
   const stats = document.getElementById('storageStats').textContent;
   t('stats count drive clips', /Google Drive: \d+ clips?/.test(stats), stats);
   t('stats note Drive never auto-deleted', /never auto-deleted/.test(stats), stats);
-  t('stats mention Supabase state', /Supabase Storage:/.test(stats), stats);
+  t('stats mention legacy clip storage', /Legacy clips \(R2\):/.test(stats), stats);
 
   console.log('backup import safety:');
   world.confirmValue = true;
@@ -404,7 +385,7 @@ async function instance1() {
 
   console.log('console hygiene:');
   const newErrors = errors.slice(errBaseline);
-  t('no unexpected errors during instance 1', newErrors.filter(e => !/backend error|supabase down/.test(e)).length === 0, newErrors.join(' | '));
+  t('no unexpected errors during instance 1', newErrors.filter(e => !/backend error|d1 down/.test(e)).length === 0, newErrors.join(' | '));
   t('access token never appears in console', !errors.some(e => /TESTTOKEN/.test(e)));
 
   console.log(`\n${pass} passed, ${fail} failed (instance 1)`);
@@ -412,7 +393,7 @@ async function instance1() {
 
 // ============================================================
 // Instance 2: seeded legacy + drive records from localStorage.
-// Proves old Supabase records keep working unchanged alongside
+// Proves old records keep working unchanged alongside
 // Drive-backed ones.
 // ============================================================
 async function instance2() {
@@ -440,37 +421,19 @@ async function instance2() {
         theme: 'dark',
       };
       window.localStorage.setItem('nappavt_growth_hub_v3:owner-1', JSON.stringify(seeded));
-      window.supabase = { createClient: () => ({
-        auth: {
-          getSession: async () => ({ data: { session: { user: { id: 'owner-1', email: 'owner@test.dev' } } } }),
-          onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
-        },
-        from: () => {
-          const q = {
-            select() { return q; }, eq() { return q; }, order() { return q; }, limit() { return q; },
-            maybeSingle: async () => ({ data: null, error: null }),
-            single: async () => ({ data: null, error: null }),
-            insert: async () => ({ error: null }),
-            update() { return { eq: async () => ({ error: null }) }; },
-            delete() { return { eq: async () => ({ error: null }) }; },
-            upsert: async p => { world.upserts2.push({ ...p, state: { ...p.state, queue: (p.state.queue || []).map(q => ({ ...q })) } }); return { error: null }; },
-          };
-          return q;
-        },
-        rpc: async name => name === 'growth_hub_access_status'
-          ? { data: { role: 'owner', owner_user_id: 'owner-1' }, error: null }
-          : { data: null, error: null },
-        storage: { from: () => ({
-          createSignedUrl: async p => { world.signedUrls.push(p); return { data: { signedUrl: 'https://signed.example/' + p }, error: null }; },
-          remove: async paths => { world.removedPaths.push(...paths); return { error: null }; },
-        }) },
-        channel() { const ch = { on() { return ch; }, subscribe() { return ch; } }; return ch; },
-        removeChannel() {},
-      }) };
+      world.upserts2 = world.upserts2 || [];
+      world.upserts = world.upserts2; // api stub records state PUTs here
+      world.clipObjects = ['owner-1/1722500000_abc_old.mp4'];
+      world.apiCalls2 = [];
+      world.onApiCall = (m, u) => world.apiCalls2.push(m + ' ' + u);
+      const api2 = makeApiStub(world);
+      window.fetch = async (url, opts = {}) => {
+        if (String(url).startsWith('/api/')) return api2(url, opts);
+        return makeDriveFetch(window)(url, opts);
+      };
       window.google = { accounts: { oauth2: {
         initTokenClient: cfg => ({ requestAccessToken: () => setTimeout(() => cfg.callback({ access_token: 'TESTTOKEN', expires_in: 3600 }), 0) }),
       } } };
-      window.fetch = makeDriveFetch(window);
       window.XMLHttpRequest = FakeXHRClass(window);
       window.confirm = () => world.confirmValue;
       window.alert = m => world.alerts2.push(String(m));
@@ -478,7 +441,7 @@ async function instance2() {
     },
   });
   const w2 = dom2.window, d2 = w2.document;
-  world.upserts2 = []; world.alerts2 = []; world.openedUrls2 = [];
+  world.upserts2.length = 0; world.alerts2 = []; world.openedUrls2 = [];
 
   await sleep(700);
   console.log('\nlegacy compatibility (seeded records):');
@@ -492,11 +455,11 @@ async function instance2() {
   const openBtns = d2.querySelectorAll('[data-open-video]');
   t('exactly two open buttons (legacy + drive)', openBtns.length === 2, openBtns.length);
 
-  console.log('legacy open via signed URL:');
-  world.openedUrls2.length = 0; world.signedUrls.length = 0;
+  console.log('legacy open via /api/clips URL:');
+  world.openedUrls2.length = 0;
   openBtns[0].click();
-  await waitFor(() => world.signedUrls.length > 0, 2000);
-  t('legacy opens with Supabase signed URL', world.signedUrls[0] === 'owner-1/1722500000_abc_old.mp4', world.signedUrls);
+  await waitFor(() => world.openedUrls2.length > 0 || world.alerts2.length > 0, 2000);
+  t('legacy opens via /api/clips URL', world.openedUrls2[0] === '/api/clips/owner-1/1722500000_abc_old.mp4', world.openedUrls2);
   t('legacy does not touch Drive', !world.openedUrls2.some(u => u.includes('drive.google')));
 
   console.log('drive open in same workspace:');
@@ -512,11 +475,11 @@ async function instance2() {
   delBtns[1].click(); // drive record
   await waitFor(() => world.trashed.length === 1, 2500);
   t('drive delete trashes Drive file', world.trashed[0] === 'SEEDDRV', world.trashed);
-  t('drive delete does NOT call Supabase remove', world.removedPaths.length === 0, world.removedPaths);
+  t('drive delete does NOT remove a cloud clip object', world.removedPaths.length === 0, world.removedPaths);
   world.removedPaths.length = 0; world.upserts2.length = 0;
   delBtns[0].click(); // legacy record
   await waitFor(() => world.removedPaths.length === 1, 2500);
-  t('legacy delete still removes from Supabase Storage', world.removedPaths[0] === 'owner-1/1722500000_abc_old.mp4', world.removedPaths);
+  t('legacy delete still removes the cloud clip object', world.removedPaths[0] === 'owner-1/1722500000_abc_old.mp4', world.removedPaths);
   t('legacy delete does NOT touch Drive', world.trashed.length === 1, world.trashed);
   [...d2.querySelectorAll('[data-post]')].forEach(b => b.click());
   await sleep(700);
@@ -524,7 +487,7 @@ async function instance2() {
   const twitchRec = lastUpsert && (lastUpsert.state.queue || []).find(q => q.id === 103);
   t('twitch record still present after deletions', !!twitchRec, lastUpsert && lastUpsert.state.queue && lastUpsert.state.queue.map(q => q.id));
 
-  t('no unexpected errors in instance 2', errors.slice(errBaseline2).filter(e => !/backend error|supabase down/.test(e)).length === 0, errors.slice(errBaseline2).join(' | '));
+  t('no unexpected errors in instance 2', errors.slice(errBaseline2).filter(e => !/backend error|d1 down/.test(e)).length === 0, errors.slice(errBaseline2).join(' | '));
   console.log(`\n${pass} passed, ${fail} failed (after instances 1-2)`);
 }
 
@@ -540,21 +503,18 @@ async function instance3() {
     pretendToBeVisual: true,
     virtualConsole: vc,
     beforeParse(window) {
-      window.supabase = { createClient: () => ({
-        auth: { getSession: async () => ({ data: { session: { user: { id: 'owner-1', email: 'owner@test.dev' } } } }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) },
-        from: () => { const q = { select() { return q; }, eq() { return q; }, order() { return q; }, limit() { return q; }, maybeSingle: async () => ({ data: null, error: null }), single: async () => ({ data: null, error: null }), insert: async () => ({ error: null }), update() { return { eq: async () => ({ error: null }) }; }, delete() { return { eq: async () => ({ error: null }) }; }, upsert: async () => ({ error: null }) }; return q; },
-        rpc: async name => name === 'growth_hub_access_status' ? { data: { role: 'owner', owner_user_id: 'owner-1' }, error: null } : { data: null, error: null },
-        storage: { from: () => ({ createSignedUrl: async () => ({ data: { signedUrl: 'x' }, error: null }), remove: async () => ({ error: null }) }) },
-        channel() { const ch = { on() { return ch; }, subscribe() { return ch; } }; return ch; },
-        removeChannel() {},
-      }) };
+      world.role = 'owner';
+      const api3 = makeApiStub(world);
+      window.fetch = async (url, opts = {}) => {
+        if (String(url).startsWith('/api/')) return api3(url, opts);
+        return makeDriveFetch(window)(url, opts);
+      };
       window.google = { accounts: { oauth2: {
         initTokenClient: cfg => ({ requestAccessToken: () => {
           if (world.gisMode === 'cancel') setTimeout(() => cfg.error_callback({ type: 'popup_closed' }), 0);
           else setTimeout(() => cfg.callback({ access_token: 'TESTTOKEN', expires_in: 3600 }), 0);
         } }),
       } } };
-      window.fetch = makeDriveFetch(window);
       window.XMLHttpRequest = FakeXHRClass(window);
       window.confirm = () => true;
       window.alert = () => {};

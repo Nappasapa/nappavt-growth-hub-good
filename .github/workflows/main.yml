@@ -1,37 +1,96 @@
-name: Deploy NappaVT Growth Hub
+name: CI — tests & build
 
 on:
   push:
     branches:
       - main
+      - 'arena/**'
+  pull_request:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: read
-      deployments: write
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-password
+          MARIADB_DATABASE: growthhub_ci
+          MARIADB_USER: growthhub_ci
+          MARIADB_PASSWORD: ci-app-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      TEST_DB_DSN: mysql://growthhub_ci:ci-app-password@127.0.0.1:3306/growthhub_ci
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Prepare dashboard
-        run: |
-          mkdir -p dist/privacy
-          mkdir -p dist/terms
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
 
+      - name: Install dependencies (root)
+        run: npm --version && node --version && npm ci
+
+      - name: Install dependencies (test suite)
+        run: npm --prefix .test ci
+
+      - name: Syntax check all backend files
+        run: |
+          for f in server/*.mjs server/routes/*.mjs scripts/*.mjs; do
+            node --check "$f" || exit 1
+          done
+
+      - name: Run test suite (unit + dom + integration w/ MariaDB service)
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/gh-test.log || {
+            bytes=$(wc -c < /tmp/gh-test.log 2>/dev/null || echo 0)
+            markers=$(grep -aoc "FAIL - server-log" /tmp/gh-test.log || true)
+            shaft=$(sha256sum /tmp/gh-test.log | cut -c1-16)
+            printf '::error title=debug::log-bytes=%s markers=%s sha=%s\n' "$bytes" "$markers" "$shaft"
+            grep -a "not ok" /tmp/gh-test.log | head -5 | while IFS= read -r line; do
+              msg=$(printf '%s' "$line" | sed 's/%/%25/g; s/:/%3A/g; s/,/%2C/g' | cut -c1-380)
+              printf '::error title=failed-subtest::%s\n' "$msg"
+            done
+            grep -aE "FAIL - |CRASH" /tmp/gh-test.log | head -20 | while IFS= read -r line; do
+              msg=$(printf '%s' "$line" | sed 's/%/%25/g; s/:/%3A/g; s/,/%2C/g' | cut -c1-380)
+              printf '::error title=assert-failure::%s\n' "$msg"
+            done
+            exit 1
+          }
+
+      - name: Assemble frontend artifact
+        run: |
+          mkdir -p dist/privacy dist/terms
           cp index.html dist/index.html
           cp tiktokbSoGYzHe5aeNCnsrhIKFW8BguLbCIJxy.txt dist/
           cp privacy/index.html dist/privacy/index.html
           cp terms/index.html dist/terms/index.html
 
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=nappavt-growth-hub --branch=main
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          name: growthhub-frontend
+          path: dist
+          retention-days: 14
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Build backend image (proves Dockerfile)
+        run: docker build -t growthhub-backend:ci .

@@ -10,11 +10,9 @@
 <meta name="apple-mobile-web-app-title" content="Nappa Hub">
 <meta name="description" content="NappaVT Growth Hub — private content dashboard for clip prep, publishing queue, stream analytics and advisor feedback.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0d10'/%3E%3Ctext x='32' y='43' font-family='Arial,Helvetica,sans-serif' font-size='34' font-weight='700' text-anchor='middle' fill='%23d99a5b'%3EN%3C/text%3E%3C/svg%3E">
-<link rel="preconnect" href="https://oilpvawpfysthoanjcnh.supabase.co" crossorigin>
 <link rel="preconnect" href="https://www.googleapis.com">
 <link rel="preconnect" href="https://accounts.google.com" crossorigin>
 <title>NappaVT Growth Hub</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- Google Identity Services (token client only, for private Google Drive clip storage) -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
@@ -4581,20 +4579,21 @@ html[data-theme="nappa"] #dashboardShell:after{
  <h1>Sign in</h1>
  <div class="sub">Your private creator workspace.</div>
 
- <form id="loginForm">
- <label>Email</label>
- <input id="loginEmail" type="email" autocomplete="email" placeholder="you@example.com" required>
- <label>Password</label>
- <input id="loginPassword" type="password" autocomplete="current-password" placeholder="••••••••" minlength="6" required>
- <div class="auth-actions">
- <button class="btn" id="signInButton" type="submit">Sign in</button>
- <button class="btn secondary" id="createAccount" type="button">Create account</button>
- </div>
+ <form class="auth-actions" id="loginForm" style="margin-top:14px" autocomplete="on">
+ <label style="display:block;text-align:left;margin-bottom:8px">
+ <span class="muted" style="font-size:11px">Email</span>
+ <input id="loginEmail" name="email" type="email" autocomplete="username" required style="width:100%" placeholder="you@example.com">
+ </label>
+ <label style="display:block;text-align:left;margin-bottom:10px">
+ <span class="muted" style="font-size:11px">Password</span>
+ <input id="loginPassword" name="password" type="password" autocomplete="current-password" required style="width:100%" placeholder="••••••••••••">
+ </label>
+ <button class="btn" id="accessSignIn" type="submit">Sign in securely</button>
  </form>
 
- <div id="inviteNotice" class="note" style="display:none;margin-top:12px">👀 Advisor invite detected. Sign in or create an account to open the shared NappaVT Growth Hub.</div>
+ <div id="inviteNotice" class="note" style="display:none;margin-top:12px">👀 Advisor invite detected. Sign in with the email and password you choose below — your account is created and the invite claimed in one step.</div>
  <div id="authMessage" class="auth-message" role="status" aria-live="polite"></div>
- <div class="auth-note">Your Growth Hub requires your Supabase account to open.</div>
+ <div class="auth-note">Private workspace — accounts exist only for the Owner and invited Advisors. Sessions are server-side with a secure httpOnly cookie; nothing sensitive ever lives in this file.</div>
  </div>
 </div>
 
@@ -4964,7 +4963,7 @@ html[data-theme="nappa"] #dashboardShell:after{
  <label>Video clip</label>
  <div class="filebox">
  <div class="drive-conn" id="driveConnRow">
- <span class="muted" id="driveConnText">New uploads go to your private Google Drive folder “NappaVT Growth Hub Clips”. Existing clips in Supabase Storage keep working.</span>
+ <span class="muted" id="driveConnText">New uploads go to your private Google Drive folder “NappaVT Growth Hub Clips”. Older clips stored in the Growth Hub’s cloud storage keep working.</span>
  <span class="drive-actions">
  <span id="driveConnState" class="drive-pill" hidden>Google Drive</span>
  <button class="btn secondary" id="driveConnectBtn" type="button">Connect Google Drive</button>
@@ -4978,7 +4977,7 @@ html[data-theme="nappa"] #dashboardShell:after{
  <div class="progress"><div id="qUploadBar" style="width:0%"></div></div>
  <div class="upload-progress-foot"><span class="up-bytes" id="qUploadBytes">0 MB / 0 MB</span><button class="btn secondary up-cancel" id="qUploadCancel" type="button" hidden>Cancel upload</button></div>
  </div>
- <div class="muted" id="qStorageHint">New uploads go to your private Google Drive. It is not public. Existing clips stay in Supabase Storage.</div>
+ <div class="muted" id="qStorageHint">New uploads go to your private Google Drive. It is not public. Older clips stay in the Growth Hub’s cloud storage.</div>
  <div id="qImportedClip" class="import-source"></div>
  <div id="uploadStatus" class="upload-status" aria-live="polite"></div>
  </div>
@@ -5015,7 +5014,7 @@ html[data-theme="nappa"] #dashboardShell:after{
  <div>
  <h2>Twitch Clips</h2>
  <div class="muted" id="twitchStatusCopy">
-                Connect Twitch through Nappa Bot once, then your recent clips appear here automatically. Twitch clips do not use your Supabase video storage.
+                Connect Twitch through Nappa Bot once, then your recent clips appear here automatically. Twitch clips do not use any Growth Hub cloud storage.
  </div>
  </div>
  <button class="btn secondary" id="requestTwitchRefresh">↻ Refresh clips</button>
@@ -5167,7 +5166,7 @@ html[data-theme="nappa"] #dashboardShell:after{
  <div class="grid">
  <div class="card span12">
  <h2>Backup & transfer</h2>
- <div class="note">When signed in, your dashboard autosaves locally and to Supabase. Your phone and PC can load the same dashboard.</div>
+ <div class="note">When signed in, your dashboard autosaves locally and to the cloud (your Growth Hub server database). Your phone and PC can load the same dashboard.</div>
  <div class="row" style="margin-top:12px">
  <button class="btn" id="exportBackup">Download backup</button>
  <label class="btn secondary" style="display:inline-flex;align-items:center">Import backup<input type="file" id="importBackup" accept=".json" style="display:none"></label>
@@ -5178,7 +5177,7 @@ html[data-theme="nappa"] #dashboardShell:after{
  <div class="card span12">
  <h2>Clip storage</h2>
  <div class="note">
-            New uploads go to your private Google Drive folder “NappaVT Growth Hub Clips” and are only removed when you explicitly delete them — Drive clips are not auto-cleaned. Older uploads remain in Supabase Storage and can still be cleaned up automatically after posting. Twitch clips stay on Twitch and use 0 MB of Supabase video storage. Your post history stays in the Growth Hub.
+            New uploads go to your private Google Drive folder “NappaVT Growth Hub Clips” and are only removed when you explicitly delete them — Drive clips are not auto-cleaned. Older uploads remain in the Growth Hub’s cloud clip storage and can still be cleaned up automatically after posting. Twitch clips stay on Twitch and use none of your cloud clip storage. Your post history stays in the Growth Hub.
  </div>
 
  <div class="formgrid" style="margin-top:12px">
@@ -5200,8 +5199,9 @@ html[data-theme="nappa"] #dashboardShell:after{
 
  <div class="card span12">
  <h2>Social analytics connections</h2>
- <div class="note">Credentials and OAuth refresh tokens live only on Craftnode. They are never placed in this HTML or Supabase dashboard state.</div>
+ <div class="note">Credentials and OAuth refresh tokens live only on Craftnode. They are never placed in this HTML or the cloud dashboard state.</div>
  <div class="formgrid" style="margin-top:12px">
+ <div class="f12"><h3>Growth Hub connection (Nappa Bot)</h3><div class="muted" id="botConnectionInfo">Craftnode env: <b>GROWTH_HUB_API_BASE</b> (this page's origin), <b>GROWTH_HUB_USER_ID</b> (loaded after sign-in) and <b>BOT_SYNC_TOKEN</b> (shared secret set on the Growth Hub backend). The bot uses /api/bot/* — never any browser token.</div></div>
  <div class="f6"><h3>YouTube</h3><div class="muted">Craftnode env: <b>YOUTUBE_CLIENT_ID</b>, <b>YOUTUBE_CLIENT_SECRET</b>. Enable YouTube Data API v3 + YouTube Analytics API. Redirect URI defaults to <b>http://127.0.0.1:53682/callback</b>.</div></div>
  <div class="f6"><h3>TikTok</h3><div class="muted">Craftnode env: <b>TIKTOK_CLIENT_KEY</b>, <b>TIKTOK_CLIENT_SECRET</b>. Add Login Kit + TikTok API / Display API with <b>video.list</b>. Redirect URI defaults to <b>http://127.0.0.1:53683/callback/</b>.</div></div>
  </div>
@@ -5232,7 +5232,7 @@ html[data-theme="nappa"] #dashboardShell:after{
  <div class="card span12">
  <h2>Login setup</h2>
  <div class="note">
-            Supabase login and cloud syncing are configured. Owner data stays protected by Row Level Security; Advisor accounts can only read the shared workspace and write their own feedback notes.
+            Sign-in is a private email+password session (httpOnly cookie) and your data syncs to the Growth Hub's own server database. Every request is checked server-side: only your approved accounts get in; Advisor accounts can only read the shared workspace and write their own feedback notes.
  </div>
  </div>
  </div>
@@ -5264,26 +5264,60 @@ html[data-theme="nappa"] #dashboardShell:after{
 window.SIDEBAR_PRIMARY_PAGES=new Set(['dashboard','twitchclips','queue','contentperformance','streams','analytics','settings']);
 window.SIDEBAR_MORE_PAGES=['streamlibrary','clips','feedback','ideas'];
 /* ==========================================================
-   SUPABASE LOGIN CONFIG
-   These are intentionally placeholders until you create the
-   Supabase project. Never put a service-role key in this file.
+   BACKEND (Node.js + MariaDB)
+   The dashboard talks to the same-origin Growth Hub backend under /api
+   (Node.js + MariaDB). Authentication is a server-side session checked on
+   every request, so no API keys, passwords or service credentials ever
+   live in this file.
 ========================================================== */
-const PUBLIC_APP_URL='https://nappavt-growth-hub.pages.dev';
-const SUPABASE_URL='https://oilpvawpfysthoanjcnh.supabase.co';
-const SUPABASE_ANON_KEY='sb_publishable_P8iho9ES2INzZR4KV4Ci2Q_9oJ8JZg5';
+// The backend serves this page and the API on one origin, so origin is dynamic
+// (invite links must follow the deployment domain).
+const PUBLIC_APP_URL=(()=>{try{return location.origin}catch(e){return ''}})()||'';
+let authVia=''; // 'session' — returned by /api/me
 
-const configured=
-  SUPABASE_URL.startsWith('https://') &&
-  !SUPABASE_URL.includes('PASTE_YOUR') &&
-  SUPABASE_ANON_KEY.length>30 &&
-  !SUPABASE_ANON_KEY.includes('PASTE_YOUR');
-
-let sb=null;
-if(configured && window.supabase){
-  sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+// Thin API client. Resolves {ok,status,data}; throws only on network failure.
+// A mid-session 401 (expired Access session) locks the UI back to the sign-in
+// screen instead of silently corrupting sync state.
+async function apiFetch(path,options={}){
+  const opts={method:options.method||'GET',credentials:'same-origin',cache:'no-store',headers:{}};
+  if(options.body!==undefined){opts.headers['content-type']='application/json';opts.body=JSON.stringify(options.body)}
+  if(options.headers)Object.assign(opts.headers,options.headers);
+  const res=await fetch('/api'+path,opts);
+  let data=null;
+  try{data=await res.json()}catch(e){}
+  if(res.status===401&&currentUser)handleAuthLost();
+  return {ok:res.ok,status:res.status,data};
 }
+function apiErrorMessage(res,fallback){
+  const code=res&&res.data&&res.data.error?String(res.data.error):'';
+  const table={
+    not_authenticated:'Your secure sign-in session expired. Sign in again.',
+    auth_not_configured:'Secure sign-in is not configured yet. The Growth Hub Owner needs to finish the backend setup.',
+    no_access:'This account does not have access to the NappaVT Growth Hub.',
+    owner_only:'Only the Growth Hub Owner can do that.',
+    advisor_only:'Only Advisor accounts can do that.',
+    invite_not_found:'That Advisor invite link is not valid. Ask the Owner for a fresh one.',
+    invite_expired:'That Advisor invite has expired. Ask the Owner for a fresh one.',
+    invite_already_claimed:'That Advisor invite was already claimed by a different account. Ask the Owner for a fresh one.',
+    state_too_large:'The dashboard state is too large to save. Contact the Owner.',
+    storage_not_configured:'Cloud clip storage is not configured yet.',
+    member_not_found:'That Advisor is no longer connected.',
+    note_not_found:'That feedback note no longer exists.',
+    conflict:'The cloud copy changed while saving. Retrying with the latest version might be needed.'
+  };
+  return table[code]||fallback||('Request failed ('+code+(res&&res.status?' · '+res.status:'')+')');
+}
+function handleAuthLost(){
+  if(!currentUser)return;
+  clearTimeout(cloudSaveTimer);
+  currentUser=null;workspaceOwnerId=null;workspaceRole='unknown';workspaceMember=null;advisorNotes=[];lastRemoteUpdatedAt='';
+  setSyncStatus('','Signed out');
+  openLogin();
+  authMsg('Your secure sign-in session expired. Sign in again to keep syncing.','error');
+}
+function clipApiUrl(path){return '/api/clips/'+String(path||'').split('/').map(encodeURIComponent).join('/')}
 
-// Advisor auth must always return to the public Cloudflare deployment.
+// Invite links are built against the current origin of this deployment.
 const URL_INVITE_TOKEN=(new URLSearchParams(location.search).get('invite')||'').trim();
 if(URL_INVITE_TOKEN){try{sessionStorage.setItem('growthHubPendingInvite',URL_INVITE_TOKEN)}catch(e){}}
 const INVITE_TOKEN=(URL_INVITE_TOKEN||(()=>{try{return sessionStorage.getItem('growthHubPendingInvite')||''}catch(e){return ''}})()).trim();
@@ -5291,24 +5325,14 @@ const ADVISOR_PAGES=new Set(['dashboard','twitchclips','contentperformance','str
 
 const authScreen=document.getElementById('authScreen');
 const dashboardShell=document.getElementById('dashboardShell');
-const loginForm=document.getElementById('loginForm');
-const loginEmail=document.getElementById('loginEmail');
-const loginPassword=document.getElementById('loginPassword');
+const accessSignInButton=document.getElementById('accessSignIn');
 const authMessage=document.getElementById('authMessage');
-const signInButton=document.getElementById('signInButton');
-const createAccountButton=document.getElementById('createAccount');
 const signedInAs=document.getElementById('signedInAs');
 const loginMode=document.getElementById('loginMode');
 
 function authMsg(text,type=''){
   authMessage.textContent=text;
   authMessage.className='auth-message show'+(type?' '+type:'');
-}
-function setAuthBusy(busy,mode=''){
-  if(signInButton)signInButton.disabled=!!busy;
-  if(createAccountButton)createAccountButton.disabled=!!busy;
-  if(signInButton)signInButton.textContent=busy&&mode==='signin'?'Signing in…':'Sign in';
-  if(createAccountButton)createAccountButton.textContent=busy&&mode==='signup'?'Creating…':'Create account';
 }
 function openApp(email=''){
   document.body.classList.remove('auth-open');
@@ -5329,159 +5353,79 @@ function openLogin(){
 const inviteNotice=document.getElementById('inviteNotice');
 if(INVITE_TOKEN&&inviteNotice)inviteNotice.style.display='block';
 
-loginForm.addEventListener('submit',async(e)=>{
-  e.preventDefault();
-  if(signInButton?.disabled||createAccountButton?.disabled)return;
-  setAuthBusy(true,'signin');
-  if(!configured||!sb){
-    authMsg('Supabase connection is not configured.','error');
-    setAuthBusy(false);
-    return;
-  }
-  const email=loginEmail.value.trim();
-  const password=loginPassword.value;
-  let authResult;
+const loginForm=document.getElementById('loginForm');
+loginForm?.addEventListener('submit',async(ev)=>{
+  ev.preventDefault();
+  const email=(document.getElementById('loginEmail')?.value||'').trim();
+  const password=document.getElementById('loginPassword')?.value||'';
+  if(!email||!password)return;
+  const btn=document.getElementById('accessSignIn');
+  if(btn)btn.disabled=true;
+  authMsg('Signing in…');
   try{
-    authResult=await withTimeout(
-      sb.auth.signInWithPassword({email,password}),
-      10000,
-      'Supabase login is taking too long'
-    );
-  }catch(err){
-    authMsg('Supabase is responding slowly right now. Try again in a moment.','error');
-    setAuthBusy(false);
-    return;
-  }
-  const {data,error}=authResult;
-  if(error){
-    const msg=String(error.message||'Sign in failed');
-    if(/invalid login credentials/i.test(msg)){
-      authMsg('Invalid login credentials. If you just created this Advisor account, verify the email first, then reopen the invite link and sign in with the same password.','error');
-    }else{
-      authMsg(msg,'error');
-    }
-    setAuthBusy(false);
-    return
-  }
-    setAuthBusy(false);
-    openApp(data.user?.email||email);
-  try{
-    await loadCloudState(data.user);
-  }catch(err){
-    authMsg('Signed in, but cloud data could not load: '+(err.message||err),'error');
-  }
-});
-
-createAccountButton?.addEventListener('click',async(e)=>{
-  e.preventDefault();
-  e.stopPropagation();
-
-  if(createAccountButton.disabled||signInButton?.disabled)return;
-
-  if(!INVITE_TOKEN){
-    authMsg('This Create account button only works from an Advisor invite link. Ask the Growth Hub Owner for a fresh invite.','error');
-    return;
-  }
-  if(!configured||!sb){
-    authMsg('Supabase is not configured yet. The Growth Hub Owner needs to fix the site connection.','error');
-    return;
-  }
-
-  const email=loginEmail.value.trim();
-  const password=loginPassword.value;
-
-  if(!email){
-    authMsg('Enter the email address you want to use for this Advisor account.','error');
-    loginEmail.focus();
-    return;
-  }
-  if(password.length<6){
-    authMsg('Use a password of at least 6 characters.','error');
-    loginPassword.focus();
-    return;
-  }
-
-  setAuthBusy(true,'signup');
-  authMsg('Creating your Advisor account…','working');
-
-  const inviteReturnUrl=`${PUBLIC_APP_URL}/?invite=${encodeURIComponent(INVITE_TOKEN)}`;
-
-  try{
-    const result=await withTimeout(
-      sb.auth.signUp({
-        email,
-        password,
-        options:{emailRedirectTo:inviteReturnUrl}
-      }),
-      15000,
-      'Account creation timed out'
-    );
-
-    const {data,error}=result||{};
-    if(error)throw error;
-
-    // Supabase can either create a live session immediately or require email
-    // confirmation depending on the project's Auth settings.
-    if(data?.session&&data?.user){
-      authMsg('Account created. Connecting you to the Advisor workspace…','good');
-      setAuthBusy(false);
-      openApp(data.user.email||email);
-      try{
-        await loadCloudState(data.user);
-      }catch(err){
-        authMsg('Account created, but the Advisor workspace could not open: '+(err.message||err),'error');
+    let res;
+    if(INVITE_TOKEN){
+      // Single-step onboarding: create the advisor account + claim the invite.
+      res=await apiFetch('/invites/signup-claim',{method:'POST',body:{token:INVITE_TOKEN,email,password}});
+      if(res.ok){try{sessionStorage.removeItem('growthHubPendingInvite')}catch(e){}window.location.reload();return}
+      if(res.status===409&&res.data&&res.data.error==='email_registered'){
+        // Account exists — plain login; the boot sequence claims the invite.
+        res=await apiFetch('/auth/login',{method:'POST',body:{email,password}});
+        if(res.ok){window.location.reload();return}
       }
-      return;
-    }
-
-    setAuthBusy(false);
-    authMsg(
-      'Account request accepted. Check your email for the verification link, then return through this SAME Advisor invite link and sign in with the password you just chose.',
-      'good'
-    );
-  }catch(err){
-    setAuthBusy(false);
-    const msg=String(err?.message||err||'Account creation failed');
-
-    if(/timed out/i.test(msg)){
-      authMsg('Account creation took too long. Nothing has consumed the Advisor invite — you can press Create account again with the same invite link.','error');
-    }else if(/already registered|already been registered|user already exists/i.test(msg)){
-      authMsg('That email already has an account. Keep this same Advisor invite open and use Sign in instead.','error');
-    }else if(/signup|signups|disabled|not allowed/i.test(msg)){
-      authMsg('Supabase rejected new account creation: '+msg,'error');
     }else{
-      authMsg('Could not create the account: '+msg+'. The Advisor invite is still safe to reuse unless it was successfully claimed.','error');
+      res=await apiFetch('/auth/login',{method:'POST',body:{email,password}});
+      if(res.ok){window.location.reload();return}
     }
+    const table={
+      invalid_credentials:'Wrong email or password.',
+      invalid_login_input:'Enter your email and password.',
+      invalid_email:'That email address does not look right.',
+      invalid_token:'That Advisor invite link is not valid. Ask the Owner for a fresh one.',
+      weak_password:(res.data&&res.data.detail)||'Choose a longer password (at least 8 characters).',
+      rate_limited:'Too many attempts. Wait a few minutes and try again.',
+      email_registered:'That email already has an account — signing you in instead…',
+      service_unavailable:'The database is not reachable right now. Try again in a moment.'
+    };
+    authMsg(table[res.data&&res.data.error]||apiErrorMessage(res,'Sign-in failed. Try again.'),'error');
+  }catch(err){
+    authMsg('The Growth Hub backend is not responding yet. Try again in a moment.','error');
+  }finally{
+    if(btn)btn.disabled=false;
   }
 });
-
-
 
 document.getElementById('signOut').addEventListener('click',async()=>{
-    clearTimeout(cloudSaveTimer);
-  clearRealtime();
+  clearTimeout(cloudSaveTimer);
+  try{await apiFetch('/auth/logout',{method:'POST'})}catch(e){/* backend may be down; still clear UI */}
   currentUser=null;workspaceOwnerId=null;workspaceRole='unknown';workspaceMember=null;advisorNotes=[];lastRemoteUpdatedAt='';
-  if(sb){try{await sb.auth.signOut()}catch(e){}}
-  loginPassword.value='';
   openLogin();
+  authMsg('Signed out.');
 });
 
 (async()=>{
-  if(configured&&sb){
-    try{
-      const {data}=await withTimeout(
-        sb.auth.getSession(),
-        8000,
-        'Supabase authentication is taking too long'
-      );
-      if(data.session?.user){
-        openApp(data.session.user.email||'');
-        try{await loadCloudState(data.session.user)}catch(err){console.error(err)}
-        return;
-      }
-    }catch(e){}
+  try{
+    const me=await withTimeout(apiFetch('/me'),8000,'Secure sign-in is taking too long');
+    if(me.ok&&me.data&&me.data.id){
+      authVia=me.data.via||'';
+      const user={id:String(me.data.id),email:me.data.email||''};
+      openApp(user.email);
+      try{await loadCloudState(user)}catch(err){console.error(err)}
+      return;
+    }
+    openLogin();
+    if(me.status===401){
+      authMsg(INVITE_TOKEN
+        ?'Advisor invite detected. Sign in — or pick a new password — to claim it.'
+        :'Sign in to open your Growth Hub.','error');
+    }else if(me.status===503){
+      authMsg(apiErrorMessage(me,'Secure sign-in is not configured yet. The Owner needs to finish the backend setup.'),'error');
+    }
+  }catch(err){
+    console.warn('Growth Hub session check failed:',err);
+    openLogin();
+    authMsg('The Growth Hub backend is not responding yet. Try again in a moment.','error');
   }
-  openLogin();
 })();
 
 /* ===== Existing Growth Hub data/app logic ===== */
@@ -5523,8 +5467,8 @@ let cloudRetryCount=0;
 let lastRemoteUpdatedAt='';
 let localDirty=false;
 let fullRefreshBusy=false;
-let workspaceRealtimeChannel=null;
-let advisorRealtimeChannel=null;
+let lastNotesRevision='';
+let lastMembersRevision='';
 let advisorNotes=[];
 let lastCloudSaveError=null;
 let cloudRevision=0;
@@ -5573,17 +5517,11 @@ function readWorkspaceCache(){
   }catch(e){}
   return normalizeState({});
 }
-function clearRealtime(){
-  if(!sb)return;
-  for(const channel of [workspaceRealtimeChannel,advisorRealtimeChannel]){
-    if(channel){try{sb.removeChannel(channel)}catch(e){}}
-  }
-  workspaceRealtimeChannel=null;advisorRealtimeChannel=null;
-}
 async function claimInviteIfNeeded(){
-  if(!INVITE_TOKEN||!sb||!currentUser)return null;
-  const {data,error}=await withTimeout(sb.rpc('claim_growth_hub_invite',{invite_token:INVITE_TOKEN}),8000,'Advisor invite verification timed out');
-  if(error)throw error;
+  if(!INVITE_TOKEN||!currentUser)return null;
+  const res=await withTimeout(apiFetch('/invites/claim',{method:'POST',body:{token:INVITE_TOKEN}}),8000,'Advisor invite verification timed out');
+  if(!res.ok)throw new Error(apiErrorMessage(res,'Advisor invite could not be claimed.'));
+  const data=res.data;
   try{
     sessionStorage.removeItem('growthHubPendingInvite');
     const u=new URL(location.href);u.searchParams.delete('invite');history.replaceState({},'',u.pathname+u.search+u.hash);
@@ -5591,9 +5529,10 @@ async function claimInviteIfNeeded(){
   return data;
 }
 async function getWorkspaceAccessStatus(){
-  if(!sb||!currentUser)return {role:'none'};
-  const {data,error}=await withTimeout(sb.rpc('growth_hub_access_status'),8000,'Workspace access verification timed out');
-  if(error)throw error;
+  if(!currentUser)return {role:'none'};
+  const res=await withTimeout(apiFetch('/access/status'),8000,'Workspace access verification timed out');
+  if(!res.ok)throw new Error(apiErrorMessage(res,'Workspace access verification failed.'));
+  const data=res.data;
   return data&&typeof data==='object'?data:{role:'none'};
 }
 
@@ -5640,6 +5579,7 @@ function applyWorkspaceRoleUI(){
   const isAdvisor=workspaceRole==='advisor';
   const owner=isOwner();
   document.body.classList.toggle('advisor-mode',isAdvisor);
+  updateBotConnectionInfo();
   if(roleText){
     roleText.textContent=owner?'Owner':isAdvisor?'Advisor':workspaceRole==='revoked'?'Access removed':'No access';
   }
@@ -5701,7 +5641,6 @@ async function lockRevokedAdvisor(message='Your Advisor access has been removed.
   if(accessRevocationBusy)return;
   accessRevocationBusy=true;
   try{
-    clearRealtime();
     clearTimeout(cloudSaveTimer);
     cloudLoadFallback=false;
     localDirty=false;
@@ -5716,11 +5655,9 @@ async function lockRevokedAdvisor(message='Your Advisor access has been removed.
     authScreen.style.setProperty('display','grid','important');
     authMsg(message,'error');
 
-    // End the browser session as well. Logging back in will still be denied by
-    // growth_hub_access_status until the Owner sends/claims a new invite.
-    if(sb){
-      try{await sb.auth.signOut()}catch(e){}
-    }
+    // The server-side role check is what locks a revoked user out: the next
+    // /api/access/status poll still reports 'revoked', so re-entry is denied
+    // until the Owner sends (and the advisor claims) a fresh invite.
     currentUser=null;
     workspaceOwnerId=null;
     workspaceRole='unknown';
@@ -5733,7 +5670,7 @@ async function lockRevokedAdvisor(message='Your Advisor access has been removed.
 }
 
 async function verifyWorkspaceAccess(){
-  if(!sb||!currentUser||accessRevocationBusy)return true;
+  if(!currentUser||accessRevocationBusy)return true;
   try{
     const access=await getWorkspaceAccessStatus();
 
@@ -5971,24 +5908,25 @@ function mergeBotSocialFields(remoteState){
 }
 
 async function refreshFullCloudState({force=false}={}){
-  if(!sb||!currentUser||!workspaceOwnerId||fullRefreshBusy)return false;
-  // Never replace an owner edit that has not reached Supabase yet.
+  if(!currentUser||!workspaceOwnerId||fullRefreshBusy)return false;
+  // Never replace an owner edit that has not reached the cloud yet.
   if(isOwner()&&(cloudSaveBusy||localDirty))return false;
   fullRefreshBusy=true;
   try{
-    const {data,error}=await withTimeout(
-      sb.from('dashboard_state')
-        .select('state,updated_at')
-        .eq('user_id',workspaceOwnerId)
-        .maybeSingle(),
+    // `since` keeps the poll cheap: unchanged workspace → tiny response
+    // instead of re-downloading the whole dashboard blob (the old behavior
+    // was the main source of wasted bandwidth).
+    const res=await withTimeout(
+      apiFetch('/state?since='+encodeURIComponent(lastRemoteUpdatedAt||'')),
       8000,
-      'Supabase refresh timed out'
+      'Cloud refresh timed out'
     );
-    if(error)throw error;
-    if(!data||!data.state)return false;
+    if(!res.ok)throw new Error(apiErrorMessage(res,'Cloud refresh failed.'));
+    const data=res.data;
+    if(!data||data.unchanged||!data.state)return false;
     const remoteUpdated=String(data.updated_at||'');
     // `force` means re-check now; it must not make an older response win over
-    // the last accepted cloud version (important for focus/realtime races).
+    // the last accepted cloud version (important for focus/poll races).
     if(remoteUpdated&&lastRemoteUpdatedAt&&remoteUpdated<=lastRemoteUpdatedAt)return false;
 
     // Full remote state is authoritative when no unsaved owner edit exists.
@@ -6006,21 +5944,60 @@ async function refreshFullCloudState({force=false}={}){
   }finally{fullRefreshBusy=false}
 }
 
+// Cheap workspace change check (replaces Supabase Realtime + the old
+// full-download poll). One small request drives role enforcement plus
+// conditional refreshes for state / feedback / members.
 async function refreshEverything({force=false}={}){
-  const allowed=await verifyWorkspaceAccess();
-  if(!allowed)return;
+  if(!currentUser||!workspaceOwnerId||accessRevocationBusy)return;
   if(force&&isOwner()&&localDirty&&!cloudSaveBusy){
     await writeCloudStateNow();
   }
-  await Promise.allSettled([
-    refreshFullCloudState({force}),
-    loadAdvisorNotes(),
-    isOwner()?loadAdvisorMembers():Promise.resolve()
-  ]);
+  let res;
+  try{
+    res=await withTimeout(apiFetch('/state/revision'),8000,'Workspace revision check timed out');
+  }catch(err){
+    console.warn('Growth Hub workspace revision check failed:',err);
+    return;
+  }
+  if(!res.ok){
+    if(res.status!==401)console.warn('Growth Hub workspace revision check failed:',res.status);
+    return;
+  }
+  const rev=res.data||{};
+  // Role enforcement (what the realtime membership listener + access status
+  // RPC did before): a revoked advisor / demoted owner is locked immediately.
+  if(workspaceRole==='advisor'){
+    const sameOwner=rev.role==='advisor'&&String(rev.owner_user_id||'')===String(workspaceOwnerId||'');
+    if(!sameOwner){
+      await lockRevokedAdvisor(
+        rev.role==='revoked'
+          ?'Your Advisor access was removed by the Growth Hub Owner.'
+          :'You no longer have access to this Growth Hub workspace.'
+      );
+      return;
+    }
+  }else if(workspaceRole==='owner'){
+    if(rev.role&&rev.role!=='owner'){
+      await lockRevokedAdvisor('This account no longer has Owner access to this Growth Hub.');
+      return;
+    }
+  }
+  const tasks=[];
+  const stateRev=String(rev.state_updated_at||'');
+  if(stateRev&&stateRev!==String(lastRemoteUpdatedAt||''))tasks.push(refreshFullCloudState({force}));
+  const notesRev=String(rev.notes_updated_at||'');
+  if(notesRev!==lastNotesRevision){
+    tasks.push(loadAdvisorNotes().then(ok=>{if(ok)lastNotesRevision=notesRev}));
+  }
+  const membersRev=String(rev.members_updated_at||'');
+  if(isOwner()&&membersRev!==lastMembersRevision){
+    tasks.push(loadAdvisorMembers().then(ok=>{if(ok)lastMembersRevision=membersRev}));
+  }
+  await Promise.allSettled(tasks);
 }
 
 async function writeCloudStateNow(){
-  if(!sb||!currentUser||!workspaceOwnerId||!isOwner())return {ok:false,error:'not_saving'};
+  if(!currentUser||!workspaceOwnerId||!isOwner())return {ok:false,error:'not_saving'};
   if(cloudSaveBusy){
     cloudSavePending=true;
     return {ok:false,error:'busy'};
@@ -6029,37 +6006,47 @@ async function writeCloudStateNow(){
   const saveRevision=cloudRevision;
   setSyncStatus('syncing','Saving…');
   try{
-    // Pull only bot-controlled changes immediately before saving so a stale
-    // browser cannot erase Discord status, Twitch metadata or social data.
-    const {data:remote,error:readError}=await withTimeout(
-      sb.from('dashboard_state')
-        .select('state,updated_at')
-        .eq('user_id',workspaceOwnerId)
-        .maybeSingle(),
+    // Conditional preflight: only download the workspace when the bot (or
+    // another tab) actually changed something, then merge bot-controlled
+    // fields so this save cannot erase them.
+    let remote=null;
+    const preflight=await withTimeout(
+      apiFetch('/state?since='+encodeURIComponent(lastRemoteUpdatedAt||'')),
       8000,
-      'Supabase save preflight timed out'
+      'Cloud save preflight timed out'
     );
-    if(readError)throw readError;
-    if(remote){mergeBotQueueFields(remote.state);mergeBotTwitchFields(remote.state);mergeBotStreamFields(remote.state);mergeBotSocialFields(remote.state);}
+    if(!preflight.ok)throw new Error(apiErrorMessage(preflight,'Cloud save preflight failed.'));
+    if(preflight.data&&!preflight.data.unchanged&&preflight.data.state){
+      remote=preflight.data;
+      mergeBotQueueFields(remote.state);mergeBotTwitchFields(remote.state);mergeBotStreamFields(remote.state);mergeBotSocialFields(remote.state);
+    }
 
-    // Supabase serializes object references after an awaited request begins.
-    // Send an immutable snapshot instead, so a click/realtime callback during
-    // the upsert cannot partially change the payload being written.
-    const snapshot=cloneJson(state);
+    // Send an immutable snapshot, so a click/poll callback during the write
+    // cannot partially change the payload being written.
+    let snapshot=cloneJson(state);
     if(!snapshot)throw new Error('Dashboard state could not be serialized safely.');
-    const payload={
-      user_id:workspaceOwnerId,
-      state:snapshot,
-      updated_at:new Date().toISOString()
-    };
-    const {error}=await withTimeout(
-      sb.from('dashboard_state').upsert(payload,{onConflict:'user_id'}),
+    let base=String((remote&&remote.updated_at)||lastRemoteUpdatedAt||'');
+    let put=await withTimeout(
+      apiFetch('/state',{method:'PUT',body:{state:snapshot,base_updated_at:base}}),
       10000,
-      'Supabase save timed out'
+      'Cloud save timed out'
     );
-    if(error)throw error;
+    if(put.status===409&&put.data&&put.data.state){
+      // The workspace moved between preflight and write (bot write). Merge
+      // its controlled fields once more and retry against the new revision.
+      mergeBotQueueFields(put.data.state);mergeBotTwitchFields(put.data.state);mergeBotStreamFields(put.data.state);mergeBotSocialFields(put.data.state);
+      snapshot=cloneJson(state);
+      if(!snapshot)throw new Error('Dashboard state could not be serialized safely.');
+      put=await withTimeout(
+        apiFetch('/state',{method:'PUT',body:{state:snapshot,base_updated_at:String(put.data.updated_at||'')}}),
+        10000,
+        'Cloud save timed out'
+      );
+    }
+    if(!put.ok)throw new Error(apiErrorMessage(put,'Cloud save failed.'));
+    const savedAt=String((put.data&&put.data.updated_at)||'');
     writeLocalState();
-    lastRemoteUpdatedAt=payload.updated_at;
+    if(savedAt)lastRemoteUpdatedAt=savedAt;
     cloudRetryCount=0;cloudRecoveryAttempts=0;cloudLoadFallback=false;
     const changedDuringSave=cloudRevision!==saveRevision;
     localDirty=changedDuringSave;
@@ -6084,7 +6071,7 @@ async function writeCloudStateNow(){
 }
 
 function scheduleCloudSave(delay=500){
-  if(!currentUser||!sb||!isOwner())return;
+  if(!currentUser||!isOwner())return;
   cloudRecoveryAttempts=0;
   cloudRevision++;
   localDirty=true;
@@ -6093,7 +6080,7 @@ function scheduleCloudSave(delay=500){
   cloudSaveTimer=setTimeout(()=>writeCloudStateNow(),delay);
 }
 async function flushCloudSave(){
-  if(!currentUser||!sb||!isOwner())return {ok:true,localOnly:true};
+  if(!currentUser||!isOwner())return {ok:true,localOnly:true};
   clearTimeout(cloudSaveTimer);cloudSaveTimer=null;
   return writeCloudStateNow();
 }
@@ -6126,7 +6113,7 @@ function withTimeout(promise,ms,label='Request timed out'){
 }
 
 function scheduleCloudRecovery(delay=12000){
-  if(cloudRecoveryTimer||!currentUser||!sb)return;
+  if(cloudRecoveryTimer||!currentUser)return;
   if(cloudRecoveryAttempts>=6){
     setSyncStatus('error','Sync paused · retry on next change or reconnect');
     return;
@@ -6134,10 +6121,10 @@ function scheduleCloudRecovery(delay=12000){
   cloudRecoveryAttempts++;
   cloudRecoveryTimer=setTimeout(async()=>{
     cloudRecoveryTimer=null;
-    if(!cloudLoadFallback||!currentUser||!sb)return;
+    if(!cloudLoadFallback||!currentUser)return;
 
     try{
-      // A recovered owner tab may have edits that were made while Supabase
+      // A recovered owner tab may have edits that were made while the cloud
       // was offline. Persist those first; never replace them with an older
       // cloud snapshot merely because recovery succeeded.
       if(isOwner()&&localDirty){
@@ -6147,20 +6134,19 @@ function scheduleCloudRecovery(delay=12000){
         setSyncStatus('synced','Synced');
         return;
       }
-      const {data,error}=await withTimeout(
-        sb.from('dashboard_state')
-          .select('state,updated_at')
-          .eq('user_id',workspaceOwnerId)
-          .maybeSingle(),
+      const res=await withTimeout(
+        apiFetch('/state'),
         8000,
-        'Supabase recovery timed out'
+        'Cloud recovery timed out'
       );
-      if(error)throw error;
+      if(!res.ok)throw new Error(apiErrorMessage(res,'Cloud recovery failed.'));
+      const data=res.data;
 
       if(data&&data.state){
         // Once cloud is reachable again, restore the authoritative cloud
         // state. Normal local cache resumes after this.
         state=normalizeState(data.state);
+        lastRemoteUpdatedAt=String(data.updated_at||'')||lastRemoteUpdatedAt;
         writeLocalState();
         cloudLoadFallback=false;cloudRecoveryAttempts=0;
         applyStateToUI();
@@ -6177,7 +6163,7 @@ function scheduleCloudRecovery(delay=12000){
 }
 
 async function loadCloudState(user){
-  if(!sb||!user)return;
+  if(!user)return;
   currentUser=user;
   setSyncStatus('syncing','Loading…');
   let access;
@@ -6204,16 +6190,13 @@ async function loadCloudState(user){
   state=localSnapshot;
 
   try{
-    const {data,error}=await withTimeout(
-      sb.from('dashboard_state')
-        .select('state,updated_at')
-        .eq('user_id',workspaceOwnerId)
-        .maybeSingle(),
+    const res=await withTimeout(
+      apiFetch('/state'),
       8000,
-      'Supabase is taking too long to respond'
+      'The cloud is taking too long to respond'
     );
-
-    if(error)throw error;
+    if(!res.ok)throw new Error(apiErrorMessage(res,'Cloud state could not load.'));
+    const data=res.data;
 
     if(data&&data.state){
       state=normalizeState(data.state);
@@ -6223,7 +6206,6 @@ async function loadCloudState(user){
       applyStateToUI();
       setSyncStatus('synced',workspaceRole==='advisor'?'Live · read-only':'Live synced');
       loginMode.textContent=workspaceRole==='advisor'?'Advisor access · read-only workspace · auto-updating live.':'Cloud sync active · live auto-update on all signed-in devices.';
-      await setupWorkspaceRealtime();
       await refreshEverything({force:true});
       return;
     }
@@ -6234,10 +6216,10 @@ async function loadCloudState(user){
     // First owner login: seed the cloud with the browser's existing dashboard.
     state=localSnapshot;
     writeLocalState();
-    await withTimeout(writeCloudStateNow(),8000,'Supabase is taking too long to save');
+    await withTimeout(writeCloudStateNow(),8000,'The cloud is taking too long to save');
     cloudLoadFallback=false;
     applyStateToUI();
-    await setupWorkspaceRealtime();
+    await refreshEverything({force:true});
     return;
 
   }catch(err){
@@ -6265,66 +6247,28 @@ async function resetCloudAndLocal(){
   if(!isOwner())return;
   state=normalizeState({});
   writeLocalState();
-  if(currentUser&&sb)await writeCloudStateNow();
+  if(currentUser&&isOwner())await writeCloudStateNow();
   applyStateToUI();
 }
 
 
-if(sb){
-  sb.auth.onAuthStateChange(async(event,session)=>{
-    if(event==='SIGNED_IN'&&session?.user&&(!currentUser||currentUser.id!==session.user.id)){
-      openApp(session.user.email||'');
-      try{await loadCloudState(session.user)}catch(err){console.error(err)}
-    }
-    if(event==='SIGNED_OUT'){
-      clearRealtime();
-      currentUser=null;workspaceOwnerId=null;workspaceRole='unknown';workspaceMember=null;advisorNotes=[];lastRemoteUpdatedAt='';
-      setSyncStatus('','Signed out');
-    }
-  });
-}
-
-
-async function setupWorkspaceRealtime(){
-  clearRealtime();
-  if(!sb||!workspaceOwnerId)return;
-  workspaceRealtimeChannel=sb.channel(`growth-hub-state-${workspaceOwnerId}-${currentUser?.id||''}`)
-    .on('postgres_changes',{
-      event:'*',schema:'public',table:'dashboard_state',filter:`user_id=eq.${workspaceOwnerId}`
-    },()=>refreshEverything())
-    .subscribe();
-  advisorRealtimeChannel=sb.channel(`growth-hub-feedback-${workspaceOwnerId}-${currentUser?.id||''}`)
-    .on('postgres_changes',{
-      event:'*',schema:'public',table:'growth_hub_advisor_notes',filter:`owner_user_id=eq.${workspaceOwnerId}`
-    },()=>loadAdvisorNotes())
-    .on('postgres_changes',{
-      event:'*',schema:'public',table:'growth_hub_members',filter:`owner_user_id=eq.${workspaceOwnerId}`
-    },()=>{
-      if(isOwner())loadAdvisorMembers();
-      else if(workspaceRole==='advisor')verifyWorkspaceAccess();
-    })
-    .subscribe();
-}
-
-function randomInviteToken(){
-  const bytes=new Uint8Array(24);crypto.getRandomValues(bytes);
-  return Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
-}
 async function createAdvisorInvite(){
   const button=document.getElementById('createAdvisorInvite');
-  if(advisorInviteBusy||!sb||!currentUser||!isOwner())return;
+  if(advisorInviteBusy||!currentUser||!isOwner())return;
   advisorInviteBusy=true;if(button){button.disabled=true;button.textContent='Creating…'}
   try{
-    const token=randomInviteToken();
     const email=(document.getElementById('advisorInviteEmail')?.value||'').trim();
-    const expires=new Date(Date.now()+7*24*60*60*1000).toISOString();
-    const {error}=await sb.from('growth_hub_invites').insert({
-      token,owner_user_id:currentUser.id,email_hint:email||null,expires_at:expires
-    });
+    const res=await withTimeout(apiFetch('/invites',{method:'POST',body:{email_hint:email||null}}),10000,'Advisor invite creation timed out');
     const box=document.getElementById('advisorInviteResult');
-    if(error){box.innerHTML=`<div class="note">Could not create invite: ${esc(error.message)}</div>`;notifyUser('Advisor invite was not created. Try again.','error');return}
+    if(!res.ok||!res.data||!res.data.token){
+      const msg=apiErrorMessage(res,'Could not create the invite. Try again.');
+      box.innerHTML=`<div class="note">Could not create invite: ${esc(msg)}</div>`;
+      notifyUser('Advisor invite was not created. Try again.','error');
+      return;
+    }
+    const token=res.data.token;
     const link=`${PUBLIC_APP_URL}/?invite=${encodeURIComponent(token)}`;
-    box.innerHTML=`<div class="invite-box"><b>Advisor invite — expires in 7 days</b><br><span id="advisorInviteLink">${esc(link)}</span><div class="row" style="margin-top:8px"><button class="btn secondary" id="copyAdvisorInvite">Copy invite link</button></div></div>`;
+    box.innerHTML=`<div class="invite-box"><b>Advisor invite — expires in 7 days</b><br><span id="advisorInviteLink">${esc(link)}</span><div class="row" style="margin-top:8px"><button class="btn secondary" id="copyAdvisorInvite">Copy invite link</button></div><div class="muted" style="margin-top:6px">The advisor just opens the link, picks their email + password, and gets in — accounts are created when the invite is claimed.</div></div>`;
     document.getElementById('copyAdvisorInvite')?.addEventListener('click',async e=>{
       try{await navigator.clipboard.writeText(link);e.currentTarget.textContent='Copied ✓'}catch(err){prompt('Copy this invite link:',link)}
     });
@@ -6337,35 +6281,34 @@ async function createAdvisorInvite(){
 }
 async function loadAdvisorMembers(){
   const root=document.getElementById('advisorMembersList');
-  if(!root||!sb||!currentUser||!isOwner())return;
-  const {data,error}=await sb.from('growth_hub_members')
-    .select('user_id,email,created_at,role').eq('owner_user_id',currentUser.id).order('created_at',{ascending:false});
-  if(error){root.innerHTML=`<div class="muted">Could not load advisors.</div>`;return}
-  if(!data?.length){root.innerHTML='<div class="muted">No advisors have joined yet.</div>';return}
+  if(!root||!currentUser||!isOwner())return false;
+  const res=await withTimeout(apiFetch('/members'),8000,'Advisor list timed out');
+  if(!res.ok||!res.data){root.innerHTML=`<div class="muted">Could not load advisors.</div>`;return false}
+  const data=res.data.members||[];
+  if(!data.length){root.innerHTML='<div class="muted">No advisors have joined yet.</div>';return true}
   root.innerHTML=data.map(m=>`<div class="member-row"><div><b>${esc(m.email||'Advisor')}</b><div class="muted">Joined ${esc(new Date(m.created_at).toLocaleDateString())}</div></div><button class="btn danger" data-revoke-advisor="${esc(m.user_id)}">Remove access</button></div>`).join('');
   root.querySelectorAll('[data-revoke-advisor]').forEach(btn=>btn.addEventListener('click',async()=>{
     if(!confirm('Remove this Advisor\'s access?'))return;
-    const {data,error}=await sb.rpc('revoke_growth_hub_advisor',{
-      target_user_id:btn.dataset.revokeAdvisor
-    });
-    if(error){
-      alert(error.message);
+    const res=await apiFetch('/members/revoke',{method:'POST',body:{target_user_id:btn.dataset.revokeAdvisor}});
+    if(!res.ok){
+      alert(apiErrorMessage(res,'Could not remove that Advisor.'));
     }else{
       await loadAdvisorMembers();
       const box=document.getElementById('advisorInviteResult');
       if(box)box.innerHTML='<div class="note good">Advisor access removed. Their open Growth Hub session will lock automatically.</div>';
     }
   }));
+  return true;
 }
 function noteTypeLabel(value){return ({general:'General',stream:'Stream',clip:'Clip',analytics:'Analytics',idea:'Idea'})[value]||'Feedback'}
 async function loadAdvisorNotes(){
   const root=document.getElementById('advisorNotesList');
-  if(!root||!sb||!workspaceOwnerId)return;
-  let query=sb.from('growth_hub_advisor_notes').select('*').eq('owner_user_id',workspaceOwnerId).order('created_at',{ascending:false}).limit(100);
-  const {data,error}=await query;
-  if(error){root.innerHTML=`<div class="muted">Feedback unavailable: ${esc(error.message)}</div>`;return}
-  advisorNotes=Array.isArray(data)?data:[];
+  if(!root||!currentUser||!workspaceOwnerId)return false;
+  const res=await withTimeout(apiFetch('/notes'),8000,'Feedback load timed out');
+  if(!res.ok||!res.data){root.innerHTML=`<div class="muted">Feedback unavailable: ${esc(apiErrorMessage(res,'Could not load feedback.'))}</div>`;return false}
+  advisorNotes=Array.isArray(res.data.notes)?res.data.notes:[];
   renderAdvisorNotes();
+  return true;
 }
 function renderAdvisorNotes(){
   const root=document.getElementById('advisorNotesList');if(!root)return;
@@ -6384,17 +6327,15 @@ function renderAdvisorNotes(){
 }
 async function submitAdvisorNote(){
   const button=document.getElementById('submitAdvisorNote');
-  if(advisorNoteBusy||!sb||!currentUser||workspaceRole!=='advisor')return;
+  if(advisorNoteBusy||!currentUser||workspaceRole!=='advisor')return;
   const type=document.getElementById('advisorNoteType').value;
   const target=(document.getElementById('advisorNoteTarget').value||'').trim();
   const body=(document.getElementById('advisorNoteBody').value||'').trim();
   if(!body){alert('Write some feedback first.');return}
   advisorNoteBusy=true;if(button){button.disabled=true;button.textContent='Sending…'}
   try{
-    const {error}=await sb.from('growth_hub_advisor_notes').insert({
-      owner_user_id:workspaceOwnerId,author_user_id:currentUser.id,author_email:currentUser.email||workspaceMember?.email||'Advisor',target_type:type,target_ref:target||null,body
-    });
-    if(error){alert('Could not send feedback: '+error.message);return}
+    const res=await withTimeout(apiFetch('/notes',{method:'POST',body:{target_type:type,target_ref:target||null,body}}),8000,'Feedback send timed out');
+    if(!res.ok){alert('Could not send feedback: '+apiErrorMessage(res,'Try again.'));return}
     document.getElementById('advisorNoteTarget').value='';document.getElementById('advisorNoteBody').value='';
     await loadAdvisorNotes();notifyUser('Feedback sent.','good');
   }finally{
@@ -6403,13 +6344,13 @@ async function submitAdvisorNote(){
 }
 async function resolveAdvisorNote(id){
   if(!isOwner())return;
-  const {error}=await sb.from('growth_hub_advisor_notes').update({resolved_at:new Date().toISOString()}).eq('id',id).eq('owner_user_id',workspaceOwnerId);
-  if(error)alert(error.message);else loadAdvisorNotes();
+  const res=await apiFetch('/notes/'+encodeURIComponent(id),{method:'PATCH',body:{resolve:true}});
+  if(!res.ok)alert(apiErrorMessage(res,'Could not resolve the note.'));else loadAdvisorNotes();
 }
 async function deleteAdvisorNote(id){
   if(!confirm('Delete this feedback note?'))return;
-  const {error}=await sb.from('growth_hub_advisor_notes').delete().eq('id',id);
-  if(error)alert(error.message);else loadAdvisorNotes();
+  const res=await apiFetch('/notes/'+encodeURIComponent(id),{method:'DELETE'});
+  if(!res.ok)alert(apiErrorMessage(res,'Could not delete the note.'));else loadAdvisorNotes();
 }
 
 document.getElementById('createAdvisorInvite')?.addEventListener('click',createAdvisorInvite);
@@ -7042,7 +6983,6 @@ function renderClips(){
 }
 
 
-const CLIP_BUCKET='clips';
 let selectedTwitchClipId='';
 
 function selectedQueuePlatforms(){
@@ -7075,9 +7015,9 @@ function clearUploadStatus(){
    - Browser-only OAuth via Google Identity Services token client.
    - Narrow scope: https://www.googleapis.com/auth/drive.file only.
    - The access token lives in memory only. It is never logged,
-     never stored in Supabase/GitHub/localStorage, and no client
+     never stored in the cloud state/GitHub/localStorage, and no client
      secret is used anywhere in this file.
-   - Legacy clips uploaded to Supabase Storage keep working via
+   - Legacy clips uploaded to the Growth Hub cloud clip storage
      provider-aware open/delete logic below.
    ----------------------------------------------------------
    GOOGLE OAUTH SPLIT (Error 400: invalid_request guard)
@@ -7213,7 +7153,7 @@ function gdriveWaitForGsi(timeoutMs=15000){
         resolve();
       }else if(Date.now()-started>timeoutMs){
         clearInterval(timer);
-        reject(new DriveError('Google Identity Services did not load. Make sure you are on https://nappavt-growth-hub.pages.dev and that the browser is online.','auth'));
+        reject(new DriveError('Google Identity Services did not load. Check that the browser is online and nothing is blocking google.com.','auth'));
       }
     },150);
   });
@@ -7790,6 +7730,13 @@ function showSelectedFileInfo(file,problem){
   el.textContent='Selected · '+file.name+' · '+formatBytes(file.size)+(file.type?' · '+file.type:'')+(problem?'':' · ready to upload to Google Drive');
 }
 
+function updateBotConnectionInfo(){
+  const el=document.getElementById('botConnectionInfo');
+  if(!el)return;
+  const base=window.location&&window.location.origin?window.location.origin:'';
+  const uid=workspaceOwnerId?String(workspaceOwnerId):'—';
+  el.innerHTML='Craftnode env: <b>GROWTH_HUB_API_BASE</b>='+esc(base)+' · <b>GROWTH_HUB_USER_ID</b>='+esc(uid)+' · <b>BOT_SYNC_TOKEN</b>=shared secret set on this backend (never visible in the browser). The bot uses /api/bot/* on this origin — never any browser token.';
+}
 function updateStorageHint(){
   const hint=document.getElementById('qStorageHint');
   if(!hint)return;
@@ -7799,7 +7746,7 @@ function updateStorageHint(){
   }else if(file){
     hint.textContent='This clip will upload to your private Google Drive folder “'+GDRIVE_ROOT_FOLDER_NAME+'”. It is not public.';
   }else{
-    hint.textContent='New uploads go to your private Google Drive. Existing clips stay in Supabase Storage and keep working.';
+    hint.textContent='New uploads go to your private Google Drive. Older clips stay in the Growth Hub cloud clip storage and keep working.';
   }
 }
 
@@ -7877,7 +7824,7 @@ function isDriveRecord(q){
 // A queue record is only created by the caller AFTER this resolves.
 async function uploadQueueVideo(file,{onProgress,onStatusLine}={}){
   if(!file)return null;
-  if(!currentUser||!sb)throw new Error('You must be signed in before uploading a clip.');
+  if(!currentUser)throw new Error('You must be signed in before uploading a clip.');
   if(!isOwner())throw new Error('Only the Owner account can upload clip videos.');
   gdriveUploadRunning=true;
   try{
@@ -7892,7 +7839,7 @@ async function uploadQueueVideo(file,{onProgress,onStatusLine}={}){
       storageProvider:'google_drive',
       driveFileId:meta.id,
       driveFolderId:(meta.parents&&meta.parents[0])||gdriveMonthFolderId||'',
-      videoPath:'', // not used for Drive-backed clips; legacy records keep their Supabase path here
+      videoPath:'', // not used for Drive-backed clips; legacy records keep their cloud storage path here
       name:file.name,
       size:file.size||0,
       type:file.type||'',
@@ -7904,22 +7851,26 @@ async function uploadQueueVideo(file,{onProgress,onStatusLine}={}){
 }
 
 // Opens a clip. Accepts either the queue record (provider-aware)
-// or a legacy Supabase storage path string.
+// or a legacy cloud-storage path string.
 async function openStoredClip(q){
   if(!q){
     alert('No video is attached to this post.');
     return;
   }
   if(typeof q==='string'){
-    // Legacy call signature: a Supabase storage path.
-    if(!sb||!currentUser){alert('Sign in first.');return}
-    const {data,error}=await sb.storage.from(CLIP_BUCKET).createSignedUrl(q,600);
-    if(error){
-      console.error(error);
-      alert('Could not open that clip: '+error.message);
+    // Legacy call signature: a cloud clip storage path.
+    if(!currentUser){alert('Sign in first.');return}
+    try{
+      // Verify the object still exists before opening it in a new tab.
+      const head=await fetch(clipApiUrl(q),{method:'HEAD',credentials:'same-origin'});
+      if(head.status===404){alert('That clip is no longer in cloud storage. It may have been cleaned up after posting.');return}
+      if(!head.ok)throw new Error('status '+head.status);
+    }catch(err){
+      console.error(err);
+      alert('Could not open that clip right now. The cloud storage may be unreachable — try again in a moment.');
       return;
     }
-    window.open(data.signedUrl,'_blank','noopener');
+    window.open(clipApiUrl(q),'_blank','noopener');
     return;
   }
   if(isDriveRecord(q)){
@@ -7946,13 +7897,13 @@ async function openStoredClip(q){
     }
     return;
   }
-  // Legacy Supabase record.
+  // Legacy cloud-storage record.
   if(!q.videoPath){alert('No video is attached to this post.');return}
   await openStoredClip(q.videoPath);
 }
 
 // Moves a Drive-backed clip to the Google Drive trash (reversible),
-// or removes a legacy clip from Supabase Storage (existing behavior).
+// or removes a legacy clip from the cloud clip storage (existing behavior).
 async function deleteStoredClip(q){
   if(!q)return;
   if(typeof q==='object'&&isDriveRecord(q)){
@@ -7966,13 +7917,17 @@ async function deleteStoredClip(q){
     return;
   }
   const path=typeof q==='string'?q:q.videoPath;
-  if(!path||!sb||!currentUser)return;
-  const {error}=await sb.storage.from(CLIP_BUCKET).remove([path]);
-  if(error)console.warn('Could not remove clip from storage:',error.message);
+  if(!path||!currentUser)return;
+  try{
+    const res=await fetch(clipApiUrl(path),{method:'DELETE',credentials:'same-origin'});
+    if(!res.ok)console.warn('Could not remove clip from cloud storage: status',res.status);
+  }catch(err){
+    console.warn('Could not remove clip from cloud storage:',err&&err.message?err.message:err);
+  }
 }
 
 // After a successful Drive upload, make sure the queue record actually
-// reached Supabase before telling the user everything is done.
+// reached the cloud before telling the user everything is done.
 let lastQueueSaveError=null;
 async function ensureQueueRecordSaved(){
   let lastError=null;
@@ -7996,7 +7951,7 @@ function showUploadSaveFailure(err){
   el.className='upload-status show error';
   el.textContent='';
   const span=document.createElement('span');
-  span.textContent='Uploaded to Google Drive ✓ — but the queue record could NOT be saved to Supabase ('+((err&&err.message)||err)+'). The clip is safe in Drive; if the save keeps failing, this post will disappear after a reload. ';
+  span.textContent='Uploaded to Google Drive ✓ — but the queue record could NOT be saved to the cloud ('+((err&&err.message)||err)+'). The clip is safe in Drive; if the save keeps failing, this post will disappear after a reload. ';
   el.appendChild(span);
   const btn=document.createElement('button');
   btn.type='button';
@@ -8152,7 +8107,7 @@ document.getElementById('addQueue').addEventListener('click',async()=>{
     save();
 
     if(video){
-      // The video is in Drive — now verify the record reached Supabase
+      // The video is in Drive — now verify the record reached the cloud
       // before claiming success.
       const saved=await ensureQueueRecordSaved();
       if(saved.ok){
@@ -8171,7 +8126,7 @@ document.getElementById('addQueue').addEventListener('click',async()=>{
           'good'
         );
       }else{
-        showUploadStatus('Post saved on this device, but Supabase did not confirm it. The sync pill will retry automatically.','error');
+        showUploadStatus('Post saved on this device, but the cloud did not confirm it. The sync pill will retry automatically.','error');
       }
     }
   }catch(err){
@@ -9419,8 +9374,8 @@ function renderStorageStats(){
     ?`Google Drive: ${driveCount} clip${driveCount===1?'':'s'} · ${formatBytes(driveBytes)||'0 B'} · never auto-deleted`
     :'Google Drive: no clips yet');
   parts.push(supaCount
-    ?`Supabase Storage: ${supaCount} clip${supaCount===1?'':'s'} · ${formatBytes(supaBytes)||'0 B'} · auto-cleanup: ${cleanupLabel}`
-    :'Supabase Storage: no clips yet');
+    ?`Legacy clips (R2): ${supaCount} clip${supaCount===1?'':'s'} · ${formatBytes(supaBytes)||'0 B'} · auto-cleanup: ${cleanupLabel}`
+    :'Legacy clips (R2): none yet');
   el.textContent='📊 '+parts.join('  ·  ');
 }
 
@@ -9435,7 +9390,7 @@ function renderIntegrationHealth(){
   const social=state.socialConnections&&typeof state.socialConnections==='object'?state.socialConnections:{};
   const sync=state.socialSyncStatus&&typeof state.socialSyncStatus==='object'?state.socialSyncStatus:{};
   const cloudState=cloudLoadFallback?'Reconnecting':'Connected';
-  const cloudTone=cloudLoadFallback?'warn':currentUser&&sb?'good':'bad';
+  const cloudTone=cloudLoadFallback?'warn':currentUser?'good':'bad';
   const cloudDetail=cloudLoadFallback?'Using local cache; cloud writes will retry':lastRemoteUpdatedAt?`last accepted ${formatTwitchDate(lastRemoteUpdatedAt)}`:'Authenticated workspace';
   const botOk=Boolean(twitch.connected||twitch.lastSyncAt||sync.lastSyncAt);
   const botError=twitch.error||sync.error||'';
@@ -9447,7 +9402,7 @@ function renderIntegrationHealth(){
     return integrationHealthItem(label,status==='connected'?'Connected':status==='reauth'?'Reauth required':'Not connected',value.error||'No browser token is stored here',status==='connected'?'good':status==='reauth'?'warn':'');
   };
   root.innerHTML=[
-    integrationHealthItem('Supabase',cloudState,cloudDetail,cloudTone),
+    integrationHealthItem('Server database (MariaDB)',cloudState,cloudDetail,cloudTone),
     integrationHealthItem('Nappa Bot / Craftnode',botOk?'Syncing':'Not verified',botDetail,botOk?'good':botError?'warn':''),
     integrationHealthItem('Twitch',twitch.connected?'Connected':'Not connected',twitchError||`Username ${twitch.login||'NappaVT'} · ${twitch.connected?'verified':'awaiting verified sync'}`,twitch.connected?'good':twitchError?'warn':''),
     platform('instagram','Instagram'),
@@ -9814,7 +9769,7 @@ document.getElementById('requestSocialRefresh').addEventListener('click',async()
   document.getElementById('socialSyncCopy').textContent=result.ok
     ?'Refresh queued · Nappa Bot will process it on the next worker check.'
     :'Refresh kept locally · cloud sync will retry.';
-  notifyUser(result.ok?'Social analytics refresh queued.':'Social refresh was not confirmed by Supabase.',result.ok?'good':'error');
+  notifyUser(result.ok?'Social analytics refresh queued.':'Social refresh was not confirmed by the cloud.',result.ok?'good':'error');
   setTimeout(()=>{socialRefreshBusy=false;btn.disabled=false;btn.textContent='↻ Refresh analytics'},3000);
 });
 

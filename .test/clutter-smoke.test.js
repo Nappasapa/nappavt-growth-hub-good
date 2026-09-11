@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
+const { makeApiStub } = require('./api-stub.js');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 let pass = 0, fail = 0;
@@ -19,31 +20,6 @@ const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', e => { if (!/Could not load link|css|Not implemented|Could not parse CSS/.test(e.message)) errors.push('jsdomError: ' + e.message); });
 vc.on('error', (...a) => errors.push('console.error: ' + a.join(' ').slice(0, 200)));
-
-function makeSb(world) {
-  return { createClient: () => ({
-    auth: { getSession: async () => ({ data: { session: { user: { id: 'owner-1', email: 'owner@test.dev' } } } }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) },
-    from: () => {
-      const q = {
-        select() { return q; }, eq() { return q; }, order() { return q; }, limit() { return q; },
-        maybeSingle: async () => {
-          // First fetch of dashboard_state returns the seed queue; then empties.
-          if (!world.stateReturned) { world.stateReturned = true; return { data: { state: world.seedState, updated_at: '2026-09-07T00:00:00Z' }, error: null }; }
-          return { data: null, error: null };
-        },
-        single: async () => ({ data: null, error: null }),
-        insert: async () => ({ error: null }),
-        update() { return { eq: async () => ({ error: null }) }; },
-        delete() { return { eq: async () => ({ error: null }) }; },
-        upsert: async () => ({ error: null }),
-      }; return q;
-    },
-    rpc: async name => name === 'growth_hub_access_status' ? { data: { role: world.role || 'owner', owner_user_id: 'owner-1' }, error: null } : { data: null, error: null },
-    storage: { from: () => ({ createSignedUrl: async () => ({ data: { signedUrl: 'x' }, error: null }), remove: async () => ({ error: null }) }) },
-    channel() { const ch = { on() { return ch; }, subscribe() { return ch; } }; return ch; },
-    removeChannel() {},
-  }) };
-}
 
 const seedState = {
   fields: {},
@@ -64,9 +40,10 @@ async function boot(empty, role) {
     runScripts: 'dangerously', url: 'https://nappavt-growth-hub.pages.dev/', pretendToBeVisual: true,
     virtualConsole: vc,
     beforeParse(window) {
-      window.supabase = makeSb(world);
+      const api = makeApiStub(world);
       window.google = { accounts: { oauth2: { initTokenClient: () => {} } } };
-      window.fetch = async () => ({ ok: true, status: 200, json: async () => ({}), text: async () => '' });
+      const passthrough = async () => ({ ok: true, status: 200, json: async () => ({}), text: async () => '' });
+      window.fetch = (url, opts) => String(url).startsWith('/api/') ? api(url, opts) : passthrough(url, opts);
       window.XMLHttpRequest = class { open() {} setRequestHeader() {} send() {} abort() {} };
       window.confirm = () => true; window.alert = () => {};
       window.open = () => {}; window.scrollTo = () => {};
