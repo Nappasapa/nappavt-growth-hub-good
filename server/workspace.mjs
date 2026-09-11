@@ -6,7 +6,7 @@
 import { query, queryOne, exec } from './db.mjs';
 import { config } from './config.mjs';
 import { log, maskEmail } from './log.mjs';
-import { withIsoDates } from './db.mjs';
+import { withIsoDates, rowsIsoDates } from './db.mjs';
 
 const OWNER_META_KEY = 'owner_user_id';
 
